@@ -1,27 +1,18 @@
+
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center"
+    android:padding="16dp"
     android:background="#000000">
 
     <TextView
-        android:id="@+id/tvStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="CALIBRATING"
+        android:text="Sensitivity"
         android:textColor="#FFFFFF"
-        android:textSize="24sp"/>
-
-    <TextView
-        android:id="@+id/tvDelta"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0.00"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:layout_marginTop="16dp"/>
+        android:textSize="18sp"/>
 
     <SeekBar
         android:id="@+id/seekSensitivity"
@@ -29,13 +20,38 @@
         android:layout_height="wrap_content"
         android:max="19"
         android:progress="9"
-        android:layout_margin="32dp"/>
+        android:layout_marginTop="8dp"/>
 
-    <Button
-        android:id="@+id/btnSettings"
+    <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Settings"
+        android:text="Vibration"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
         android:layout_marginTop="16dp"/>
+
+    <CheckBox
+        android:id="@+id/cbYellow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Yellow"
+        android:textColor="#FFFFFF"
+        android:checked="true"/>
+
+    <CheckBox
+        android:id="@+id/cbOrange"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Orange"
+        android:textColor="#FFFFFF"
+        android:checked="true"/>
+
+    <CheckBox
+        android:id="@+id/cbRed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Red"
+        android:textColor="#FFFFFF"
+        android:checked="true"/>
 
 </LinearLayout>
