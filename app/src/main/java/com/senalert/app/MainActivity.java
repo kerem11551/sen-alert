@@ -1,18 +1,15 @@
-
 package com.senalert.app;
 
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.view.View;
 import android.widget.TextView;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
+import android.widget.Button;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
     private TextView tvStatus;
     private TextView tvValues;
@@ -62,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
     private void toggleService() {
         Intent intent = new Intent(this, SensorService.class);
         if (!isRunning) {
-            ContextCompat.startForegroundService(this, intent);
+            startService(intent);
             isRunning = true;
         } else {
             stopService(intent);
@@ -71,14 +68,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveLog() {
-        // Log kaydetme - ileride eklenecek
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        registerReceiver(sensorReceiver, new IntentFilter("SENSOR_UPDATE"),
-            Context.RECEIVER_NOT_EXPORTED);
+        registerReceiver(sensorReceiver, new IntentFilter("SENSOR_UPDATE"));
     }
 
     @Override
