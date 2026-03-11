@@ -1,36 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mainLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:background="#000000">
+    android:background="#00FF00">
+
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="CALIBRATING"
-        android:textColor="#FFFFFF"
-        android:textSize="24sp"/>
+        android:text="CALIBRATING..."
+        android:textColor="#000000"
+        android:textSize="28sp"
+        android:textStyle="bold"/>
+
     <TextView
-        android:id="@+id/tvDelta"
+        android:id="@+id/tvValues"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="0.00"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
+        android:text="X: 0.00  Y: 0.00  Z: 0.00"
+        android:textColor="#000000"
+        android:textSize="16sp"
         android:layout_marginTop="16dp"/>
-    <SeekBar
-        android:id="@+id/seekSensitivity"
+
+    <Button
+        android:id="@+id/btnStart"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="START"
+        android:layout_marginTop="24dp"/>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="19"
-        android:progress="9"
-        android:layout_margin="32dp"/>
-    <Button
-        android:id="@+id/btnSettings"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Settings"
-        android:layout_marginTop="16dp"/>
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="SAVE"/>
+
+        <Button
+            android:id="@+id/btnSettings"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="SETTINGS"/>
+
+    </LinearLayout>
+
 </LinearLayout>
