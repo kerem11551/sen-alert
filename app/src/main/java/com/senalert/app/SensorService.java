@@ -12,7 +12,6 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.IBinder;
-import androidx.core.app.NotificationCompat;
 
 public class SensorService extends Service implements SensorEventListener {
 
@@ -89,14 +88,15 @@ public class SensorService extends Service implements SensorEventListener {
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
             CHANNEL_ID, "Sen-Alert", NotificationManager.IMPORTANCE_LOW);
-        getSystemService(NotificationManager.class).createNotificationChannel(channel);
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        nm.createNotificationChannel(channel);
     }
 
     private Notification buildNotification(String status) {
         PendingIntent pi = PendingIntent.getActivity(this, 0,
             new Intent(this, MainActivity.class),
             PendingIntent.FLAG_IMMUTABLE);
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        return new Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Sen-Alert")
             .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
@@ -105,7 +105,7 @@ public class SensorService extends Service implements SensorEventListener {
     }
 
     private void updateNotification(String status) {
-        getSystemService(NotificationManager.class)
-            .notify(1, buildNotification(status));
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        nm.notify(1, buildNotification(status));
     }
 }
