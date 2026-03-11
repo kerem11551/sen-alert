@@ -5,45 +5,36 @@
     android:orientation="vertical"
     android:padding="16dp"
     android:background="#000000">
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Sensitivity"
         android:textColor="#FFFFFF"
         android:textSize="18sp"/>
+
     <SeekBar
         android:id="@+id/seekSensitivity"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="19"
-        android:progress="9"
+        android:max="10"
+        android:progress="5"
         android:layout_marginTop="8dp"/>
+
     <TextView
+        android:id="@+id/tvSensitivityValue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Vibration"
+        android:text="5"
         android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:layout_marginTop="16dp"/>
-    <CheckBox
-        android:id="@+id/cbYellow"
+        android:textSize="16sp"
+        android:layout_marginTop="4dp"/>
+
+    <Button
+        android:id="@+id/btnBack"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Yellow"
-        android:textColor="#FFFFFF"
-        android:checked="true"/>
-    <CheckBox
-        android:id="@+id/cbOrange"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Orange"
-        android:textColor="#FFFFFF"
-        android:checked="true"/>
-    <CheckBox
-        android:id="@+id/cbRed"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Red"
-        android:textColor="#FFFFFF"
-        android:checked="true"/>
+        android:text="BACK"
+        android:layout_marginTop="24dp"/>
+
 </LinearLayout>
