@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28"/>
 
@@ -27,11 +29,14 @@
             android:name=".SettingsActivity"
             android:exported="false"/>
 
-        <!-- İleride arka plan/kilit ekranı algılaması için ayrılmış,
-             şu an MainActivity sensörü doğrudan dinliyor, servis henüz devrede değil -->
         <service
             android:name=".SensorService"
-            android:exported="false"/>
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Sarsıntı algılama ve anlık uyarı" />
+        </service>
 
     </application>
 
