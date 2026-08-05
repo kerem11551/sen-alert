@@ -31,8 +31,6 @@ public class MainActivity extends Activity {
     private TextView alertBar;
     private TextView sensorText;
     private TextView stateText;
-    private TextView subText;
-    private TextView levelNumberText;
     private TextView btnInfoToggle;
     private TextView lastStrongText;
     private View detailsPanel;
@@ -50,7 +48,9 @@ public class MainActivity extends Activity {
     private static final int COLOR_RED    = Color.parseColor("#FF3B30");
     private static final int COLOR_GRAY   = Color.parseColor("#8A9C9A");
 
-    // Son alınan değerler - "OLAYI KAYDET" butonunda kullanılır
+    // Top sadece durum GERÇEKTEN değiştiğinde güncellensin diye son bilinen durumu tutuyoruz
+    private String lastAppliedState = null;
+
     private float lastX, lastY, lastZ, lastDXY, lastDZ;
     private StringBuilder sensorLog = new StringBuilder();
     private static final int LOG_MAX_LINES = 500;
@@ -66,8 +66,21 @@ public class MainActivity extends Activity {
             lastZ = intent.getFloatExtra(Constants.EXTRA_Z, 0);
             lastDXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
             lastDZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
-            applyState(state, score);
+
+            // Grafik HER örnekte akar (tek hareketli öğe budur)
+            ekgView.pushSample(score / 100f);
+
+            sensorText.setText(String.format(
+                Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f\nHassasiyet: %d",
+                lastX, lastY, lastZ, lastDXY, lastDZ, prefs.getInt("sensitivity", 5)
+            ));
             appendLog();
+
+            // Top SADECE durum değiştiğinde güncellensin
+            if (!state.equals(lastAppliedState)) {
+                lastAppliedState = state;
+                applyState(state);
+            }
         }
     };
 
@@ -79,8 +92,6 @@ public class MainActivity extends Activity {
         alertBar        = findViewById(R.id.alertBar);
         sensorText      = findViewById(R.id.sensorText);
         stateText       = findViewById(R.id.stateText);
-        subText         = findViewById(R.id.subText);
-        levelNumberText = findViewById(R.id.levelNumberText);
         btnInfoToggle   = findViewById(R.id.btnInfoToggle);
         lastStrongText  = findViewById(R.id.lastStrongText);
         detailsPanel    = findViewById(R.id.detailsPanel);
@@ -131,14 +142,15 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Başlangıç görünümü: nötr (gri, yaysız)
+        orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
         updateLastStrongText();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        IntentFilter filter = new IntentFilter(Constants.ACTION_STATE);
-        registerReceiver(stateReceiver, filter);
+        registerReceiver(stateReceiver, new IntentFilter(Constants.ACTION_STATE));
         updateLastStrongText();
     }
 
@@ -146,7 +158,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(stateReceiver); } catch (Exception ignored) {}
-        // NOT: servisi burada durdurmuyoruz - arka planda çalışmaya devam etmesi tam olarak amacımız
+        // Servisi burada durdurmuyoruz - arka planda çalışmaya devam etmesi amacımız
     }
 
     private void startMonitoringService() {
@@ -172,64 +184,50 @@ public class MainActivity extends Activity {
         sendBroadcast(i);
     }
 
-    private void applyState(String state, int score) {
-        float frac = score / 100f;
-        ekgView.pushSample(frac);
-        levelNumberText.setText(String.valueOf(score));
-
-        sensorText.setText(String.format(
-            Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f\nHassasiyet: %d",
-            lastX, lastY, lastZ, lastDXY, lastDZ, prefs.getInt("sensitivity", 5)
-        ));
-
+    private void applyState(String state) {
         switch (state) {
             case "CALIBRATING":
-                orbView.setLevel(0f, COLOR_GRAY);
+                orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
                 alertBar.setVisibility(View.VISIBLE);
                 alertBar.setBackgroundColor(Color.GRAY);
                 alertBar.setText("KALİBRASYON YAPILIYOR...");
                 stateText.setText("KALİBRASYON");
                 stateText.setTextColor(COLOR_GRAY);
-                subText.setText("Telefonu sabit bırakın");
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.GONE);
                 break;
             case "GREEN":
-                orbView.setLevel(frac, COLOR_GREEN);
+                orbView.setState(COLOR_GREEN, ShakeOrbView.LEVEL_GREEN);
                 alertBar.setVisibility(View.GONE);
                 stateText.setText("SABİT");
                 stateText.setTextColor(COLOR_GREEN);
-                subText.setText("Normal seviyede");
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.GONE);
                 break;
             case "YELLOW":
-                orbView.setLevel(frac, COLOR_YELLOW);
+                orbView.setState(COLOR_YELLOW, ShakeOrbView.LEVEL_YELLOW);
                 alertBar.setVisibility(View.GONE);
                 stateText.setText("SARSINTI ALGILANDI");
                 stateText.setTextColor(COLOR_YELLOW);
-                subText.setText("Belirgin hareket algılandı");
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.GONE);
                 break;
             case "RED":
-                orbView.setLevel(frac, COLOR_RED);
+                orbView.setState(COLOR_RED, ShakeOrbView.LEVEL_RED);
                 alertBar.setVisibility(View.GONE);
-                stateText.setText("GÜÇLÜ SARSINTI");
+                stateText.setText("GÜÇLÜ SARSINTI ALGILANDI");
                 stateText.setTextColor(COLOR_RED);
-                subText.setText("Güvenliğinizi kontrol edin");
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.VISIBLE);
                 updateLastStrongText();
                 break;
             case "PAUSED_GRAY":
-                orbView.setLevel(0f, COLOR_GRAY);
+                orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
                 alertBar.setVisibility(View.VISIBLE);
                 alertBar.setBackgroundColor(Color.DKGRAY);
                 alertBar.setText("CİHAZIN KONUMU DEĞİŞTİ\nİZLEME DURDURULDU");
                 stateText.setText("İZLEME BEKLEMEDE");
                 stateText.setTextColor(COLOR_GRAY);
-                subText.setText("Yeniden başlatmak için kalibre edin");
                 btnRecalibrate.setVisibility(View.VISIBLE);
                 btnMute.setVisibility(View.GONE);
                 break;
