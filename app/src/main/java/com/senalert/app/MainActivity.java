@@ -30,9 +30,13 @@ public class MainActivity extends Activity implements SensorEventListener {
     // ---------- UI ----------
     private TextView alertBar;
     private TextView sensorText;
+    private TextView stateText;
+    private TextView subText;
     private Button btnRecalibrate;
     private Button btnCapture;
     private View rootLayout;
+    private ShakeOrbView orbView;
+    private EkgGraphView ekgView;
 
     // ---------- SENSOR ----------
     private SensorManager sensorManager;
@@ -56,6 +60,14 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private State currentState = State.CALIBRATING;
 
+    // ---------- RENKLER (mockup ile birebir) ----------
+    private static final int COLOR_GREEN  = Color.parseColor("#35D07F");
+    private static final int COLOR_YELLOW = Color.parseColor("#F5C518");
+    private static final int COLOR_ORANGE = Color.parseColor("#FFA500");
+    private static final int COLOR_RED    = Color.parseColor("#FF4438");
+    private static final int COLOR_GRAY   = Color.parseColor("#5E7472");
+    private int currentColor = COLOR_GREEN;
+
     // ---------- SENSOR VALUES ----------
     private float lastX, lastY, lastZ;
     private boolean firstRead = true;
@@ -68,26 +80,19 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final long CALIBRATION_MS = 2000;
     private static final long STATE_HOLD_MS = 500;
 
-    // Hassasiyet eşikleri (büyüklük, m/s^2 cinsinden) - Settings'deki sensitivity % değerine göre ölçeklenir
     private static final float BASE_YELLOW = 0.15f;
     private static final float BASE_ORANGE = 0.35f;
     private static final float BASE_RED    = 0.65f;
 
-    // Dinamik eşikler (sensitivity'ye göre güncellenir)
     private float thYellow = BASE_YELLOW;
     private float thOrange = BASE_ORANGE;
     private float thRed    = BASE_RED;
 
-    // Ele alma tespiti (ΔZ)
     private static final float HAND_Z_DELTA = 1.0f;
 
-    // ---- YENİ: yumuşatma penceresi (RMS benzeri hareketli ortalama) ----
-    // Gerçek testte (sert elle sallama) dXY ~1.02 çıktı; STATE_HOLD_MS zaten
-    // 500ms'lik bir soğuma sağlıyordu, bunu gerçek "sürelilik" filtresine çeviriyoruz.
-    private static final int SMOOTH_WINDOW = 6; // ~SENSOR_DELAY_UI'de yaklaşık 300-400ms
+    private static final int SMOOTH_WINDOW = 6;
     private final float[] magBuffer = new float[SMOOTH_WINDOW];
     private int magIndex = 0;
-    // Çok büyük ani darbede (örn. masaya sert vurma) soğuma süresini beklemeden tetikle
     private static final float INSTANT_RED_OVERRIDE = 1.4f;
 
     // ---------- LOG ----------
@@ -102,9 +107,13 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         alertBar        = findViewById(R.id.alertBar);
         sensorText      = findViewById(R.id.sensorText);
+        stateText       = findViewById(R.id.stateText);
+        subText         = findViewById(R.id.subText);
         btnRecalibrate  = findViewById(R.id.btnRecalibrate);
         btnCapture      = findViewById(R.id.btnCapture);
         rootLayout      = findViewById(R.id.rootLayout);
+        orbView         = findViewById(R.id.orbView);
+        ekgView         = findViewById(R.id.ekgView);
 
         vibrator      = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -153,10 +162,9 @@ public class MainActivity extends Activity implements SensorEventListener {
         sensorManager.unregisterListener(this);
     }
 
-    // Settings'deki sensitivity % değerine göre eşikleri güncelle
     private void updateSensitivity() {
-        int sensitivity = prefs.getInt("sensitivity", 10); // 1-20 arası
-        float factor = 1.0f - (sensitivity - 10) * 0.03f; // ±30% aralık
+        int sensitivity = prefs.getInt("sensitivity", 10);
+        float factor = 1.0f - (sensitivity - 10) * 0.03f;
         factor = Math.max(0.4f, Math.min(1.6f, factor));
         thYellow = BASE_YELLOW * factor;
         thOrange = BASE_ORANGE * factor;
@@ -180,10 +188,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         float dy = y - lastY;
         float dz = Math.abs(z - lastZ);
 
-        // ---- DEĞİŞTİ: ortalama yerine gerçek vektör büyüklüğü ----
         float dMag = (float) Math.sqrt(dx * dx + dy * dy);
 
-        // ---- YENİ: yumuşatılmış (hareketli ortalama) değer ----
         magBuffer[magIndex % SMOOTH_WINDOW] = dMag;
         magIndex++;
         int count = Math.min(magIndex, SMOOTH_WINDOW);
@@ -193,7 +199,6 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         lastX = x; lastY = y; lastZ = z;
 
-        // GRİ: sadece butonu bekle
         if (currentState == State.PAUSED_GRAY) return;
 
         sensorText.setText(String.format(
@@ -204,34 +209,48 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         appendLog(x, y, z, dXY, dz);
 
+        // ---- GÖRSEL: EKG grafiği ve top her örnekte güncellenir ----
+        float frac = computeFrac(dXY);
+        ekgView.pushSample(frac);
+        orbView.setLevel(frac, currentColor);
+
         long now = SystemClock.elapsedRealtime();
 
-        // KALİBRASYON
         if (currentState == State.CALIBRATING) {
             if (now - calibrateStartMs >= CALIBRATION_MS) goGreen();
             return;
         }
 
-        // ELE ALINDI → GRİ
         if (currentState != State.GREEN && dz >= HAND_Z_DELTA) {
             goGray();
             return;
         }
 
-        // ---- YENİ: çok büyük ani darbe, soğuma süresini beklemeden kırmızıya geç ----
         if (dMag >= INSTANT_RED_OVERRIDE) {
             goRed();
             return;
         }
 
-        // RENK ZIPLAMASINI ÖNLE (soğuma süresi)
         if (now - lastStateChangeMs < STATE_HOLD_MS) return;
 
-        // RENK GEÇİŞLERİ
         if      (dXY >= thRed)    goRed();
         else if (dXY >= thOrange) goOrange();
         else if (dXY >= thYellow) goYellow();
         else                      goGreen();
+    }
+
+    /** dXY değerini eşiklere göre 0..1 aralığına eşler (EkgGraphView'daki çizgilerle uyumlu) */
+    private float computeFrac(float dXY) {
+        if (dXY <= thYellow) {
+            return (dXY / thYellow) * 0.33f;
+        } else if (dXY <= thOrange) {
+            return 0.33f + (dXY - thYellow) / (thOrange - thYellow) * 0.27f;
+        } else if (dXY <= thRed) {
+            return 0.60f + (dXY - thOrange) / (thRed - thOrange) * 0.25f;
+        } else {
+            float over = Math.min((dXY - thRed) / thRed, 1f);
+            return 0.85f + over * 0.15f;
+        }
     }
 
     @Override
@@ -242,51 +261,74 @@ public class MainActivity extends Activity implements SensorEventListener {
     private void goCalibrating() {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
+        currentColor = COLOR_GRAY;
+        alertBar.setVisibility(View.VISIBLE);
         alertBar.setBackgroundColor(Color.GRAY);
         alertBar.setText("KALİBRASYON YAPILIYOR...");
+        stateText.setText("KALİBRASYON");
+        stateText.setTextColor(COLOR_GRAY);
+        subText.setText("Telefonu sabit bırakın");
         btnRecalibrate.setVisibility(View.GONE);
     }
 
     private void goGreen() {
         if (currentState == State.GREEN) return;
         currentState = State.GREEN;
+        currentColor = COLOR_GREEN;
         lastStateChangeMs = SystemClock.elapsedRealtime();
-        alertBar.setBackgroundColor(Color.GREEN);
-        alertBar.setText("SARSINTI ALGILANMADI");
+        alertBar.setVisibility(View.GONE);
+        stateText.setText("SABİT");
+        stateText.setTextColor(COLOR_GREEN);
+        subText.setText("Sarsıntı yok");
         btnRecalibrate.setVisibility(View.GONE);
     }
 
     private void goYellow() {
         if (currentState == State.YELLOW) return;
         currentState = State.YELLOW;
+        currentColor = COLOR_YELLOW;
         lastStateChangeMs = SystemClock.elapsedRealtime();
-        alertBar.setBackgroundColor(Color.YELLOW);
-        alertBar.setText("HAFİF SARSINTI");
+        alertBar.setVisibility(View.GONE);
+        stateText.setText("HAFİF SARSINTI");
+        stateText.setTextColor(COLOR_YELLOW);
+        subText.setText("Küçük bir hareket algılandı");
         triggerFeedback("yellow");
     }
 
     private void goOrange() {
         if (currentState == State.ORANGE) return;
         currentState = State.ORANGE;
+        currentColor = COLOR_ORANGE;
         lastStateChangeMs = SystemClock.elapsedRealtime();
-        alertBar.setBackgroundColor(Color.parseColor("#FFA500"));
-        alertBar.setText("ORTA SARSINTI");
+        alertBar.setVisibility(View.GONE);
+        stateText.setText("ORTA SARSINTI");
+        stateText.setTextColor(COLOR_ORANGE);
+        subText.setText("Belirgin titreşim var");
         triggerFeedback("orange");
     }
 
     private void goRed() {
         if (currentState == State.RED) return;
         currentState = State.RED;
+        currentColor = COLOR_RED;
         lastStateChangeMs = SystemClock.elapsedRealtime();
-        alertBar.setBackgroundColor(Color.RED);
-        alertBar.setText("ŞİDDETLİ SARSINTI!");
+        alertBar.setVisibility(View.GONE);
+        stateText.setText("ŞİDDETLİ SARSINTI!");
+        stateText.setTextColor(COLOR_RED);
+        subText.setText("Güçlü hareket algılandı");
         triggerFeedback("red");
     }
 
     private void goGray() {
         currentState = State.PAUSED_GRAY;
+        currentColor = COLOR_GRAY;
+        alertBar.setVisibility(View.VISIBLE);
         alertBar.setBackgroundColor(Color.DKGRAY);
         alertBar.setText("CİHAZ ELİNİZE ALINDI\nÖLÇÜM DURDURULDU");
+        stateText.setText("DURAKLATILDI");
+        stateText.setTextColor(COLOR_GRAY);
+        subText.setText("Devam etmek için kalibre edin");
+        orbView.setLevel(0f, COLOR_GRAY);
         btnRecalibrate.setVisibility(View.VISIBLE);
     }
 
