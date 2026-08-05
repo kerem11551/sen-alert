@@ -7,6 +7,7 @@ import android.view.View;
 import android.widget.CheckBox;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 public class SettingsActivity extends Activity {
 
@@ -16,10 +17,8 @@ public class SettingsActivity extends Activity {
     private SeekBar seekSensitivity;
     private TextView tvSensitivityValue;
 
-    // Sarı
     private CheckBox cbYellowSound, cbYellowVib, cbYellowFlash;
-    // Kırmızı
-    private CheckBox cbRedSound, cbRedVib, cbRedFlash, cbRedWake, cbRedContinuous;
+    private CheckBox cbRedSound, cbRedVib, cbRedFlash, cbRedWake;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,15 +34,13 @@ public class SettingsActivity extends Activity {
         cbYellowVib   = findViewById(R.id.cbYellowVib);
         cbYellowFlash = findViewById(R.id.cbYellowFlash);
 
-        cbRedSound      = findViewById(R.id.cbRedSound);
-        cbRedVib        = findViewById(R.id.cbRedVib);
-        cbRedFlash      = findViewById(R.id.cbRedFlash);
-        cbRedWake       = findViewById(R.id.cbRedWake);
-        cbRedContinuous = findViewById(R.id.cbRedContinuous);
+        cbRedSound = findViewById(R.id.cbRedSound);
+        cbRedVib   = findViewById(R.id.cbRedVib);
+        cbRedFlash = findViewById(R.id.cbRedFlash);
+        cbRedWake  = findViewById(R.id.cbRedWake);
 
-        // ---- Hassasiyet: 1-10 ----
         int savedSensitivity = prefs.getInt("sensitivity", 5);
-        seekSensitivity.setMax(9); // 0..9 -> gösterimde +1
+        seekSensitivity.setMax(9);
         seekSensitivity.setProgress(savedSensitivity - 1);
         tvSensitivityValue.setText(String.valueOf(savedSensitivity));
 
@@ -62,11 +59,17 @@ public class SettingsActivity extends Activity {
         bindCheckbox(cbYellowVib,   "yellow_vibration", true);
         bindCheckbox(cbYellowFlash, "yellow_flash", false);
 
-        bindCheckbox(cbRedSound,      "red_sound", true);
-        bindCheckbox(cbRedVib,        "red_vibration", true);
-        bindCheckbox(cbRedFlash,      "red_flash", true);
-        bindCheckbox(cbRedWake,       "red_wake_screen", true);
-        bindCheckbox(cbRedContinuous, "red_continuous", true);
+        bindCheckbox(cbRedSound, "red_sound", true);
+        bindCheckbox(cbRedVib,   "red_vibration", true);
+        bindCheckbox(cbRedFlash, "red_flash", true);
+        bindCheckbox(cbRedWake,  "red_wake_screen", true);
+
+        findViewById(R.id.btnSave).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Toast.makeText(SettingsActivity.this, "Ayarlar kaydedildi ✓", Toast.LENGTH_SHORT).show();
+            }
+        });
 
         findViewById(R.id.btnBack).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { finish(); }
