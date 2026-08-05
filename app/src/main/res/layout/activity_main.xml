@@ -1,56 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/mainLayout"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:background="#00FF00">
+    android:background="#05070707"
+    android:padding="16dp">
 
     <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="wrap_content"
+        android:id="@+id/alertBar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="CALIBRATING..."
+        android:padding="24dp"
+        android:gravity="center"
+        android:text="KALİBRASYON YAPILIYOR..."
         android:textColor="#000000"
-        android:textSize="28sp"
-        android:textStyle="bold"/>
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:background="#808080"/>
 
     <TextView
-        android:id="@+id/tvValues"
+        android:id="@+id/sensorText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="X: 0.00  Y: 0.00  Z: 0.00"
-        android:textColor="#000000"
-        android:textSize="16sp"
-        android:layout_marginTop="16dp"/>
+        android:layout_marginTop="20dp"
+        android:text="X: 0.00  Y: 0.00  Z: 0.00\nΔXY: 0.00  ΔZ: 0.00"
+        android:textColor="#DCE7E5"
+        android:textSize="14sp"
+        android:fontFamily="monospace"
+        android:gravity="center"/>
 
     <Button
-        android:id="@+id/btnStart"
+        android:id="@+id/btnRecalibrate"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="START"
-        android:layout_marginTop="24dp"/>
+        android:layout_marginTop="24dp"
+        android:text="YENİDEN KALİBRE ET"
+        android:visibility="gone"/>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="16dp">
+        android:layout_marginTop="20dp">
 
         <Button
-            android:id="@+id/btnSave"
+            android:id="@+id/btnCapture"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="SAVE"/>
+            android:text="KAYDET"/>
 
         <Button
             android:id="@+id/btnSettings"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="SETTINGS"/>
+            android:text="AYARLAR"/>
 
     </LinearLayout>
 
