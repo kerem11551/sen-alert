@@ -1,64 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:background="#05070707"
-    android:padding="16dp">
-
-    <TextView
-        android:id="@+id/alertBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="24dp"
-        android:gravity="center"
-        android:text="KALİBRASYON YAPILIYOR..."
-        android:textColor="#000000"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:background="#808080"/>
-
-    <TextView
-        android:id="@+id/sensorText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:text="X: 0.00  Y: 0.00  Z: 0.00\nΔXY: 0.00  ΔZ: 0.00"
-        android:textColor="#DCE7E5"
-        android:textSize="14sp"
-        android:fontFamily="monospace"
-        android:gravity="center"/>
-
-    <Button
-        android:id="@+id/btnRecalibrate"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="YENİDEN KALİBRE ET"
-        android:visibility="gone"/>
+    android:background="#05070707">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="20dp">
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- TEK RENKLİ TOP -->
+        <com.senalert.app.ShakeOrbView
+            android:id="@+id/orbView"
+            android:layout_width="140dp"
+            android:layout_height="140dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="12dp"/>
+
+        <TextView
+            android:id="@+id/stateText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:text="SABİT"
+            android:textColor="#35D07F"
+            android:textSize="26sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/subText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="2dp"
+            android:text="Sarsıntı yok"
+            android:textColor="#5E7472"
+            android:textSize="13sp"/>
+
+        <!-- KALİBRASYON / ELE ALINDI DURUMU (eski alertBar'ın yerini alıyor) -->
+        <TextView
+            android:id="@+id/alertBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:padding="14dp"
+            android:gravity="center"
+            android:visibility="gone"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:background="#808080"/>
+
+        <!-- EKG GRAFİĞİ -->
+        <com.senalert.app.EkgGraphView
+            android:id="@+id/ekgView"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_marginTop="20dp"
+            android:background="#0a1112"/>
+
+        <!-- HAM SENSÖR DEĞERLERİ (debug/detay) -->
+        <TextView
+            android:id="@+id/sensorText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="14dp"
+            android:text="X: 0.00  Y: 0.00  Z: 0.00\nΔXY: 0.00  ΔZ: 0.00"
+            android:textColor="#5E7472"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:gravity="center"/>
 
         <Button
-            android:id="@+id/btnCapture"
-            android:layout_width="0dp"
+            android:id="@+id/btnRecalibrate"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="KAYDET"/>
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:text="YENİDEN KALİBRE ET"
+            android:visibility="gone"/>
 
-        <Button
-            android:id="@+id/btnSettings"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="AYARLAR"/>
+            android:orientation="horizontal"
+            android:layout_marginTop="20dp">
+
+            <Button
+                android:id="@+id/btnCapture"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="KAYDET"/>
+
+            <Button
+                android:id="@+id/btnSettings"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="AYARLAR"/>
+
+        </LinearLayout>
 
     </LinearLayout>
-
-</LinearLayout>
+</ScrollView>
