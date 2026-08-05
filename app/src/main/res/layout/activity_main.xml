@@ -72,11 +72,21 @@
             android:textColor="#FFFFFF"
             android:visibility="gone"/>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="20dp"
+            android:text="ANLIK SARSINTI SEVİYESİ"
+            android:textColor="#5E7472"
+            android:textSize="11sp"
+            android:letterSpacing="0.08"/>
+
         <com.senalert.app.EkgGraphView
             android:id="@+id/ekgView"
             android:layout_width="match_parent"
             android:layout_height="180dp"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="8dp"
             android:background="#0a1112"/>
 
         <TextView
