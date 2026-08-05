@@ -11,7 +11,6 @@
         android:orientation="vertical"
         android:padding="20dp">
 
-        <!-- TEK RENKLİ TOP -->
         <com.senalert.app.ShakeOrbView
             android:id="@+id/orbView"
             android:layout_width="140dp"
@@ -36,11 +35,10 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="2dp"
-            android:text="Sarsıntı yok"
+            android:text="Normal seviyede"
             android:textColor="#5E7472"
             android:textSize="13sp"/>
 
-        <!-- KALİBRASYON / ELE ALINDI DURUMU (eski alertBar'ın yerini alıyor) -->
         <TextView
             android:id="@+id/alertBar"
             android:layout_width="match_parent"
@@ -54,7 +52,16 @@
             android:textStyle="bold"
             android:background="#808080"/>
 
-        <!-- EKG GRAFİĞİ -->
+        <Button
+            android:id="@+id/btnMute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="SUSTUR"
+            android:backgroundTint="#FF4438"
+            android:textColor="#FFFFFF"
+            android:visibility="gone"/>
+
         <com.senalert.app.EkgGraphView
             android:id="@+id/ekgView"
             android:layout_width="match_parent"
@@ -62,7 +69,6 @@
             android:layout_marginTop="20dp"
             android:background="#0a1112"/>
 
-        <!-- HAM SENSÖR DEĞERLERİ (debug/detay) -->
         <TextView
             android:id="@+id/sensorText"
             android:layout_width="wrap_content"
