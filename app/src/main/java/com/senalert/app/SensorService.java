@@ -24,6 +24,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.Vibrator;
 
@@ -33,8 +34,10 @@ import java.util.Locale;
 
 /**
  * Sen-Alert'in gerçek çalışma motoru. MainActivity ekranda olsa da olmasa da
- * sensörü dinler, durum makinesini işletir, bildirimleri (ses/titreşim/flaş) tetikler.
- * MainActivity sadece bu servisten gelen broadcast'leri dinleyip ekranda gösterir.
+ * sensörü dinler, durum makinesini işletir, bildirimleri tetikler.
+ * Kısmi wake lock, ekran kapalıyken sensör verisinin toplu (batch) teslim
+ * edilmesini önlemeye yardımcı olur - gerçek zamanlı algılama için gerekli,
+ * karşılığında bir miktar pil tüketimi artar.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -49,6 +52,7 @@ public class SensorService extends Service implements SensorEventListener {
     private MediaPlayer alarmPlayer;
     private SharedPreferences prefs;
     private NotificationManager notifManager;
+    private PowerManager.WakeLock wakeLock;
 
     private enum State { CALIBRATING, GREEN, YELLOW, RED, PAUSED_GRAY }
     private State currentState = State.CALIBRATING;
@@ -63,8 +67,8 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long YELLOW_SUSTAIN_MS = 800;
     private static final long RED_SUSTAIN_MS = 500;
     private static final long RELEASE_SUSTAIN_MS = 500;
-    // Sabit süreli alarm - sınırsız değil, panik yapmasın diye
     private static final long RED_ALARM_DURATION_MS = 4000;
+    private static final long YELLOW_PULSE_INTERVAL_MS = 3500; // sarıda kalırken tekrar aralığı
 
     private static final float BASE_YELLOW = 0.15f;
     private static final float BASE_RED    = 0.90f;
@@ -79,6 +83,7 @@ public class SensorService extends Service implements SensorEventListener {
     private final Handler handler = new Handler();
     private boolean redAlarmActive = false;
     private boolean redAlarmMuted = false;
+    private boolean yellowPulseActive = false;
 
     private long lastNotifUpdateMs = 0;
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
@@ -93,6 +98,14 @@ public class SensorService extends Service implements SensorEventListener {
 
     private final Runnable stopRedAlarmRunnable = new Runnable() {
         @Override public void run() { stopRedAlarm(); }
+    };
+
+    private final Runnable yellowPulseRunnable = new Runnable() {
+        @Override public void run() {
+            if (currentState != State.YELLOW) { yellowPulseActive = false; return; }
+            triggerYellowFeedback();
+            handler.postDelayed(this, YELLOW_PULSE_INTERVAL_MS);
+        }
     };
 
     private final BroadcastReceiver controlReceiver = new BroadcastReceiver() {
@@ -118,8 +131,10 @@ public class SensorService extends Service implements SensorEventListener {
         cameraId = getFirstCameraWithFlash();
         notifManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
+        acquireWakeLock();
+
         createNotificationChannel();
-        startForeground(NOTIF_ID, buildNotification("🟤", "KALİBRASYON"));
+        startForeground(NOTIF_ID, buildNotification("🟤", "KALİBRASYON", 0));
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constants.ACTION_MUTE);
@@ -129,12 +144,13 @@ public class SensorService extends Service implements SensorEventListener {
         updateSensitivity();
         sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
 
+        prefs.edit().putBoolean("service_running", true).apply();
         goCalibrating();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        return START_STICKY; // sistem öldürürse yeniden başlat
+        return START_STICKY;
     }
 
     @Override
@@ -142,11 +158,29 @@ public class SensorService extends Service implements SensorEventListener {
         super.onDestroy();
         sensorManager.unregisterListener(this);
         stopRedAlarm();
+        handler.removeCallbacksAndMessages(null);
         try { unregisterReceiver(controlReceiver); } catch (Exception ignored) {}
+        releaseWakeLock();
+        prefs.edit().putBoolean("service_running", false).apply();
     }
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
+
+    private void acquireWakeLock() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SenAlert::SensorWakeLock");
+            wakeLock.setReferenceCounted(false);
+            wakeLock.acquire(); // süresiz - servis çalıştığı sürece tutulur, onDestroy'da bırakılır
+        } catch (Exception ignored) {}
+    }
+
+    private void releaseWakeLock() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        } catch (Exception ignored) {}
+    }
 
     private void updateSensitivity() {
         int sensitivity = prefs.getInt("sensitivity", 5);
@@ -158,7 +192,7 @@ public class SensorService extends Service implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        updateSensitivity(); // ayarlar ekranında değişmiş olabilir
+        updateSensitivity();
 
         float x = event.values[0];
         float y = event.values[1];
@@ -240,15 +274,14 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    /** dXY -> 0..1 (EkgGraphView eşik çizgileriyle uyumlu) */
     private float computeFrac(float dXY) {
         if (dXY <= thYellow) {
-            return (dXY / thYellow) * 0.30f;
+            return (dXY / thYellow) * 0.35f;
         } else if (dXY <= thRed) {
-            return 0.30f + (dXY - thYellow) / (thRed - thYellow) * 0.40f;
+            return 0.35f + (dXY - thYellow) / (thRed - thYellow) * 0.37f;
         } else {
             float over = Math.min((dXY - thRed) / thRed, 1f);
-            return 0.70f + over * 0.30f;
+            return 0.72f + over * 0.28f;
         }
     }
 
@@ -261,28 +294,31 @@ public class SensorService extends Service implements SensorEventListener {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
         stopRedAlarm();
-        updateNotification("🟤", "KALİBRASYON YAPILIYOR...");
+        stopYellowPulse();
+        updateNotification("🟤", "KALİBRASYON YAPILIYOR...", 0);
     }
 
     private void goGreen() {
         if (currentState == State.GREEN) return;
         currentState = State.GREEN;
         stopRedAlarm();
-        updateNotification("🟢", "SABİT");
+        stopYellowPulse();
+        updateNotification("🟢", "SABİT", 0);
     }
 
     private void goYellow() {
         if (currentState == State.YELLOW) return;
         currentState = State.YELLOW;
         stopRedAlarm();
-        updateNotification("🟡", "SARSINTI ALGILANDI");
-        triggerYellowFeedback();
+        updateNotification("🟡", "SARSINTI ALGILANDI", 0);
+        startYellowPulse();
     }
 
     private void goRed() {
         boolean alreadyRed = (currentState == State.RED);
         currentState = State.RED;
-        updateNotification("🔴", "GÜÇLÜ SARSINTI");
+        stopYellowPulse();
+        updateNotification("🔴", "GÜÇLÜ SARSINTI", 0);
         if (!alreadyRed) {
             saveLastStrongEvent();
             startRedAlarm();
@@ -292,7 +328,8 @@ public class SensorService extends Service implements SensorEventListener {
     private void goGray() {
         currentState = State.PAUSED_GRAY;
         stopRedAlarm();
-        updateNotification("⚪", "İZLEME BEKLEMEDE");
+        stopYellowPulse();
+        updateNotification("⚪", "İZLEME BEKLEMEDE", 0);
     }
 
     private void saveLastStrongEvent() {
@@ -302,9 +339,20 @@ public class SensorService extends Service implements SensorEventListener {
 
     // ================= BİLDİRİMLER (ses/titreşim/flaş) =================
 
+    private void startYellowPulse() {
+        if (yellowPulseActive) return;
+        yellowPulseActive = true;
+        handler.post(yellowPulseRunnable);
+    }
+
+    private void stopYellowPulse() {
+        yellowPulseActive = false;
+        handler.removeCallbacks(yellowPulseRunnable);
+    }
+
     private void triggerYellowFeedback() {
         if (prefs.getBoolean("yellow_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
-            vibrator.vibrate(new long[]{0, 150}, -1);
+            vibrator.vibrate(new long[]{0, 200}, -1);
         }
         if (prefs.getBoolean("yellow_sound", true)) playOnceSound();
         if (prefs.getBoolean("yellow_flash", false)) briefFlash();
@@ -320,7 +368,6 @@ public class SensorService extends Service implements SensorEventListener {
         if (prefs.getBoolean("red_sound", true)) startLoopingAlarmSound();
         if (prefs.getBoolean("red_flash", true)) handler.post(redBlinkRunnable);
 
-        // 4 saniye sonra otomatik dur - sınırsız çalmıyor
         handler.postDelayed(stopRedAlarmRunnable, RED_ALARM_DURATION_MS);
     }
 
@@ -392,7 +439,7 @@ public class SensorService extends Service implements SensorEventListener {
         return null;
     }
 
-    // ================= BİLDİRİM (Sig-Fi Compass tarzı: ikon + renkli nokta + metin) =================
+    // ================= BİLDİRİM =================
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -403,22 +450,29 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    private Notification buildNotification(String dot, String text) {
+    private Notification buildNotification(String dot, String text, int score) {
         PendingIntent pi = PendingIntent.getActivity(this, 0,
             new Intent(this, MainActivity.class),
             Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+
+        String shortText = dot + " " + text + (score > 0 ? " · " + score + "/100" : "");
+        String explanation = shortText + "\n\n" +
+            "Seviye ölçeği: 🟢 0-29 Düşük · 🟡 30-69 Orta · 🔴 70-100 Yüksek.\n" +
+            "Sayı, güçlü sarsıntı eşiğine ne kadar yakın olunduğunu gösterir.";
+
         return new Notification.Builder(this)
             .setChannelId(Constants.CHANNEL_ID)
             .setContentTitle("Sen-Alert")
-            .setContentText(dot + " " + text)
+            .setContentText(shortText)
+            .setStyle(new Notification.BigTextStyle().bigText(explanation))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setOngoing(true)
             .setContentIntent(pi)
             .build();
     }
 
-    private void updateNotification(String dot, String text) {
-        notifManager.notify(NOTIF_ID, buildNotification(dot, text));
+    private void updateNotification(String dot, String text, int score) {
+        notifManager.notify(NOTIF_ID, buildNotification(dot, text, score));
     }
 
     private void maybeUpdateNotification(int score) {
@@ -427,7 +481,7 @@ public class SensorService extends Service implements SensorEventListener {
         lastNotifUpdateMs = now;
         if (currentState == State.CALIBRATING || currentState == State.PAUSED_GRAY) return;
         String dot = currentState == State.RED ? "🔴" : currentState == State.YELLOW ? "🟡" : "🟢";
-        updateNotification(dot, stateLabel() + " · " + score + "/100");
+        updateNotification(dot, stateLabel(), score);
     }
 
     private String stateLabel() {
