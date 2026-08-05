@@ -13,10 +13,10 @@
 
         <com.senalert.app.ShakeOrbView
             android:id="@+id/orbView"
-            android:layout_width="140dp"
-            android:layout_height="140dp"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="12dp"/>
+            android:layout_marginTop="8dp"/>
 
         <TextView
             android:id="@+id/stateText"
@@ -25,8 +25,8 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="16dp"
             android:text="SABİT"
-            android:textColor="#35D07F"
-            android:textSize="26sp"
+            android:textColor="#22E88A"
+            android:textSize="28sp"
             android:textStyle="bold"/>
 
         <TextView
@@ -36,8 +36,19 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="2dp"
             android:text="Normal seviyede"
+            android:textColor="#8A9C9A"
+            android:textSize="14sp"/>
+
+        <TextView
+            android:id="@+id/lastStrongText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="6dp"
+            android:text="Son Güçlü Sarsıntı: —"
             android:textColor="#5E7472"
-            android:textSize="13sp"/>
+            android:textSize="11sp"
+            android:fontFamily="monospace"/>
 
         <TextView
             android:id="@+id/alertBar"
@@ -58,28 +69,93 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="SUSTUR"
-            android:backgroundTint="#FF4438"
+            android:backgroundTint="#FF3B30"
             android:textColor="#FFFFFF"
             android:visibility="gone"/>
 
         <com.senalert.app.EkgGraphView
             android:id="@+id/ekgView"
             android:layout_width="match_parent"
-            android:layout_height="150dp"
+            android:layout_height="170dp"
             android:layout_marginTop="20dp"
             android:background="#0a1112"/>
 
         <TextView
-            android:id="@+id/sensorText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="6dp"
+            android:text="Son 6 Saniye"
+            android:textColor="#5E7472"
+            android:textSize="12sp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginTop="18dp"
+            android:padding="14dp"
+            android:background="#0F1517">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ANLIK SARSINTI SEVİYESİ"
+                android:textColor="#5E7472"
+                android:textSize="11sp"
+                android:letterSpacing="0.08"/>
+
+            <TextView
+                android:id="@+id/levelNumberText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="#22E88A"
+                android:textSize="42sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="/ 100"
+                android:textColor="#5E7472"
+                android:textSize="12sp"/>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnInfoToggle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="14dp"
-            android:text="X: 0.00  Y: 0.00  Z: 0.00\nΔXY: 0.00  ΔZ: 0.00"
+            android:padding="8dp"
+            android:text="ℹ️ Teknik Bilgi"
             android:textColor="#5E7472"
-            android:textSize="12sp"
-            android:fontFamily="monospace"
-            android:gravity="center"/>
+            android:textSize="12sp"/>
+
+        <LinearLayout
+            android:id="@+id/detailsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:background="#0F1517"
+            android:padding="12dp"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:id="@+id/sensorText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="X: 0.00  Y: 0.00  Z: 0.00\nΔXY: 0.00  ΔZ: 0.00"
+                android:textColor="#5E7472"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:gravity="center"/>
+        </LinearLayout>
 
         <Button
             android:id="@+id/btnRecalibrate"
@@ -101,7 +177,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="KAYDET"/>
+                android:text="OLAYI KAYDET"/>
 
             <Button
                 android:id="@+id/btnSettings"
