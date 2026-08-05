@@ -10,8 +10,8 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * EKG tarzı akan sarsıntı grafiği. pushSample(0..1) ile beslenir,
- * en yeni değer sağdan girer, eski değerler sola kayar.
+ * EKG tarzı akan sarsıntı grafiği - 3 kademeli tasarım (yeşil/sarı/kırmızı).
+ * pushSample(0..1) ile beslenir.
  */
 public class EkgGraphView extends View {
 
@@ -25,10 +25,9 @@ public class EkgGraphView extends View {
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path wavePath = new Path();
 
-    // Eşik çizgileri (MainActivity'deki state geçişleriyle aynı oranlarda)
-    private static final float LINE_YELLOW = 0.33f;
-    private static final float LINE_ORANGE = 0.60f;
-    private static final float LINE_RED    = 0.85f;
+    // 3 kademeli sınır çizgileri
+    private static final float LINE_YELLOW = 0.40f;
+    private static final float LINE_RED    = 0.75f;
 
     public EkgGraphView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -38,7 +37,7 @@ public class EkgGraphView extends View {
         linePaint.setStrokeWidth(4f);
         linePaint.setStrokeJoin(Paint.Join.ROUND);
         linePaint.setShadowLayer(8f, 0, 0, Color.parseColor("#F4FBFA"));
-        setLayerType(LAYER_TYPE_SOFTWARE, null); // shadowLayer için gerekli
+        setLayerType(LAYER_TYPE_SOFTWARE, null);
 
         thresholdPaint.setStyle(Paint.Style.STROKE);
         thresholdPaint.setStrokeWidth(2f);
@@ -49,7 +48,6 @@ public class EkgGraphView extends View {
         labelPaint.setAntiAlias(true);
     }
 
-    /** frac: 0 (sabit) .. 1 (çok şiddetli) */
     public void pushSample(float frac) {
         frac = Math.max(0f, Math.min(1f, frac));
         samples[writeIndex] = frac;
@@ -67,14 +65,11 @@ public class EkgGraphView extends View {
         float bottomMargin = h * 0.08f;
         float usableH = h - topMargin - bottomMargin;
 
-        // Eşik çizgileri
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#F5C518", "ORTA");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_ORANGE, "#FFA500", "YÜKSEK");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED, "#FF4438", "ÇOK YÜKSEK");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#F5C518", "SARSINTI");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED, "#FF4438", "GÜÇLÜ");
 
         if (sampleCount < 2) return;
 
-        // Dalga çizimi - en eski soldan en yeni sağa
         wavePath.reset();
         float stepX = w / (MAX_SAMPLES - 1);
         int startIdx = (writeIndex - sampleCount + MAX_SAMPLES) % MAX_SAMPLES;
