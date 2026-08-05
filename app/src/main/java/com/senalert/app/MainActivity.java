@@ -148,7 +148,7 @@ public class MainActivity extends Activity {
         boolean running = prefs.getBoolean("service_running", false);
         if (running) {
             stopService(new Intent(this, SensorService.class));
-            WatchdogReceiver.cancel(this); // kasıtlı durdurmada bekçi de iptal edilir
+            WatchdogReceiver.cancel(this);
             lastAppliedState = null;
             orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
             stateText.setText("İZLEME DURDU");
@@ -211,7 +211,7 @@ public class MainActivity extends Activity {
             case "GREEN":
                 orbView.setState(COLOR_GREEN, ShakeOrbView.LEVEL_GREEN);
                 alertBar.setVisibility(View.GONE);
-                stateText.setText("SABİT");
+                stateText.setText("NORMAL");
                 stateText.setTextColor(COLOR_GREEN);
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.GONE);
