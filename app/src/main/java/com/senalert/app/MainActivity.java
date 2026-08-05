@@ -1,6 +1,7 @@
 package com.senalert.app;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -9,11 +10,19 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraManager;
+import android.media.MediaPlayer;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.SystemClock;
 import android.os.Vibrator;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -34,6 +43,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private TextView subText;
     private Button btnRecalibrate;
     private Button btnCapture;
+    private Button btnMute;
     private View rootLayout;
     private ShakeOrbView orbView;
     private EkgGraphView ekgView;
@@ -45,25 +55,26 @@ public class MainActivity extends Activity implements SensorEventListener {
     // ---------- VIBRATOR ----------
     private Vibrator vibrator;
 
+    // ---------- KAMERA / FLAŞ (izin gerekmez, setTorchMode izinsizdir) ----------
+    private CameraManager cameraManager;
+    private String cameraId;
+    private boolean torchOn = false;
+
+    // ---------- SES ----------
+    private MediaPlayer alarmPlayer; // kırmızıda döngülü çalar
+
     // ---------- SETTINGS ----------
     private SharedPreferences prefs;
 
-    // ---------- STATE ----------
-    private enum State {
-        CALIBRATING,
-        GREEN,
-        YELLOW,
-        ORANGE,
-        RED,
-        PAUSED_GRAY
-    }
+    // ---------- STATE (3 kademe) ----------
+    private enum State { CALIBRATING, GREEN, YELLOW, RED, PAUSED_GRAY }
 
     private State currentState = State.CALIBRATING;
+    private State pendingState = null;
+    private long pendingSinceMs = 0;
 
-    // ---------- RENKLER (mockup ile birebir) ----------
     private static final int COLOR_GREEN  = Color.parseColor("#35D07F");
     private static final int COLOR_YELLOW = Color.parseColor("#F5C518");
-    private static final int COLOR_ORANGE = Color.parseColor("#FFA500");
     private static final int COLOR_RED    = Color.parseColor("#FF4438");
     private static final int COLOR_GRAY   = Color.parseColor("#5E7472");
     private int currentColor = COLOR_GREEN;
@@ -72,20 +83,18 @@ public class MainActivity extends Activity implements SensorEventListener {
     private float lastX, lastY, lastZ;
     private boolean firstRead = true;
 
-    // ---------- TIME ----------
     private long calibrateStartMs = 0;
-    private long lastStateChangeMs = 0;
 
-    // ---------- CONSTANTS ----------
+    // ---------- ZAMAN / SÜRE FİLTRESİ ----------
     private static final long CALIBRATION_MS = 2000;
-    private static final long STATE_HOLD_MS = 500;
+    private static final long YELLOW_SUSTAIN_MS = 2000; // sarı: 2sn sürekli
+    private static final long RED_SUSTAIN_MS = 500;      // kırmızı: 0.5sn sürekli
+    private static final long RELEASE_SUSTAIN_MS = 500;  // geri düşüşte
 
+    // ---------- EŞİKLER (3 kademe) ----------
     private static final float BASE_YELLOW = 0.15f;
-    private static final float BASE_ORANGE = 0.35f;
-    private static final float BASE_RED    = 0.65f;
-
+    private static final float BASE_RED    = 0.45f;
     private float thYellow = BASE_YELLOW;
-    private float thOrange = BASE_ORANGE;
     private float thRed    = BASE_RED;
 
     private static final float HAND_Z_DELTA = 1.0f;
@@ -93,7 +102,21 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final int SMOOTH_WINDOW = 6;
     private final float[] magBuffer = new float[SMOOTH_WINDOW];
     private int magIndex = 0;
+    // Ani büyük darbe: süre beklemeden direkt kırmızı
     private static final float INSTANT_RED_OVERRIDE = 1.4f;
+
+    // ---------- KIRMIZI SÜREKLİ ALARM ----------
+    private final Handler redAlarmHandler = new Handler();
+    private boolean redAlarmActive = false;
+    private boolean redAlarmMuted = false;
+    private final Runnable redBlinkRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!redAlarmActive || redAlarmMuted) return;
+            if (prefs.getBoolean("red_flash", true)) toggleTorch(!torchOn);
+            redAlarmHandler.postDelayed(this, 400);
+        }
+    };
 
     // ---------- LOG ----------
     private StringBuilder sensorLog = new StringBuilder();
@@ -111,6 +134,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         subText         = findViewById(R.id.subText);
         btnRecalibrate  = findViewById(R.id.btnRecalibrate);
         btnCapture      = findViewById(R.id.btnCapture);
+        btnMute         = findViewById(R.id.btnMute);
         rootLayout      = findViewById(R.id.rootLayout);
         orbView         = findViewById(R.id.orbView);
         ekgView         = findViewById(R.id.ekgView);
@@ -118,6 +142,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         vibrator      = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        cameraId = getFirstCameraWithFlash();
 
         prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
 
@@ -146,6 +172,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         });
 
+        btnMute.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                muteRedAlarm();
+            }
+        });
+
         goCalibrating();
     }
 
@@ -160,20 +193,20 @@ public class MainActivity extends Activity implements SensorEventListener {
     protected void onPause() {
         super.onPause();
         sensorManager.unregisterListener(this);
+        stopRedAlarm();
     }
 
     private void updateSensitivity() {
-        int sensitivity = prefs.getInt("sensitivity", 10);
-        float factor = 1.0f - (sensitivity - 10) * 0.03f;
-        factor = Math.max(0.4f, Math.min(1.6f, factor));
+        // 1-10 arası, renklerden bağımsız: sadece eşikleri kaydırır
+        int sensitivity = prefs.getInt("sensitivity", 5);
+        float factor = 1.0f - (sensitivity - 5) * 0.08f; // 1=kolay tetiklenmez, 10=çok hassas
+        factor = Math.max(0.35f, Math.min(1.8f, factor));
         thYellow = BASE_YELLOW * factor;
-        thOrange = BASE_ORANGE * factor;
         thRed    = BASE_RED    * factor;
     }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-
         float x = event.values[0];
         float y = event.values[1];
         float z = event.values[2];
@@ -187,7 +220,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         float dx = x - lastX;
         float dy = y - lastY;
         float dz = Math.abs(z - lastZ);
-
         float dMag = (float) Math.sqrt(dx * dx + dy * dy);
 
         magBuffer[magIndex % SMOOTH_WINDOW] = dMag;
@@ -202,14 +234,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (currentState == State.PAUSED_GRAY) return;
 
         sensorText.setText(String.format(
-            Locale.US,
-            "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f",
+            Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f",
             x, y, z, dXY, dz
         ));
-
         appendLog(x, y, z, dXY, dz);
 
-        // ---- GÖRSEL: EKG grafiği ve top her örnekte güncellenir ----
         float frac = computeFrac(dXY);
         ekgView.pushSample(frac);
         orbView.setLevel(frac, currentColor);
@@ -217,7 +246,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         long now = SystemClock.elapsedRealtime();
 
         if (currentState == State.CALIBRATING) {
-            if (now - calibrateStartMs >= CALIBRATION_MS) goGreen();
+            if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN, now);
             return;
         }
 
@@ -226,30 +255,54 @@ public class MainActivity extends Activity implements SensorEventListener {
             return;
         }
 
+        // Ani büyük darbe: süre beklemeden direkt kırmızı
         if (dMag >= INSTANT_RED_OVERRIDE) {
-            goRed();
+            commitState(State.RED, now);
             return;
         }
 
-        if (now - lastStateChangeMs < STATE_HOLD_MS) return;
+        State candidate = dXY >= thRed ? State.RED : (dXY >= thYellow ? State.YELLOW : State.GREEN);
 
-        if      (dXY >= thRed)    goRed();
-        else if (dXY >= thOrange) goOrange();
-        else if (dXY >= thYellow) goYellow();
-        else                      goGreen();
+        if (candidate == currentState) {
+            pendingState = null;
+            return;
+        }
+
+        if (pendingState != candidate) {
+            pendingState = candidate;
+            pendingSinceMs = now;
+            return;
+        }
+
+        long requiredHold;
+        if (candidate == State.RED) requiredHold = RED_SUSTAIN_MS;
+        else if (candidate == State.YELLOW && candidate.ordinal() > currentState.ordinal()) requiredHold = YELLOW_SUSTAIN_MS;
+        else requiredHold = RELEASE_SUSTAIN_MS;
+
+        if (now - pendingSinceMs >= requiredHold) {
+            commitState(candidate, now);
+        }
     }
 
-    /** dXY değerini eşiklere göre 0..1 aralığına eşler (EkgGraphView'daki çizgilerle uyumlu) */
+    private void commitState(State s, long now) {
+        pendingState = null;
+        switch (s) {
+            case GREEN:  goGreen(); break;
+            case YELLOW: goYellow(); break;
+            case RED:    goRed(); break;
+            default: break;
+        }
+    }
+
+    /** dXY -> 0..1 (EkgGraphView eşik çizgileriyle uyumlu) */
     private float computeFrac(float dXY) {
         if (dXY <= thYellow) {
-            return (dXY / thYellow) * 0.33f;
-        } else if (dXY <= thOrange) {
-            return 0.33f + (dXY - thYellow) / (thOrange - thYellow) * 0.27f;
+            return (dXY / thYellow) * 0.40f;
         } else if (dXY <= thRed) {
-            return 0.60f + (dXY - thOrange) / (thRed - thOrange) * 0.25f;
+            return 0.40f + (dXY - thYellow) / (thRed - thYellow) * 0.35f;
         } else {
             float over = Math.min((dXY - thRed) / thRed, 1f);
-            return 0.85f + over * 0.15f;
+            return 0.75f + over * 0.25f;
         }
     }
 
@@ -262,6 +315,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
         currentColor = COLOR_GRAY;
+        stopRedAlarm();
         alertBar.setVisibility(View.VISIBLE);
         alertBar.setBackgroundColor(Color.GRAY);
         alertBar.setText("KALİBRASYON YAPILIYOR...");
@@ -275,11 +329,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (currentState == State.GREEN) return;
         currentState = State.GREEN;
         currentColor = COLOR_GREEN;
-        lastStateChangeMs = SystemClock.elapsedRealtime();
+        stopRedAlarm();
         alertBar.setVisibility(View.GONE);
         stateText.setText("SABİT");
         stateText.setTextColor(COLOR_GREEN);
-        subText.setText("Sarsıntı yok");
+        subText.setText("Normal seviyede");
         btnRecalibrate.setVisibility(View.GONE);
     }
 
@@ -287,67 +341,157 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (currentState == State.YELLOW) return;
         currentState = State.YELLOW;
         currentColor = COLOR_YELLOW;
-        lastStateChangeMs = SystemClock.elapsedRealtime();
+        stopRedAlarm();
         alertBar.setVisibility(View.GONE);
-        stateText.setText("HAFİF SARSINTI");
+        stateText.setText("SARSINTI ALGILANDI");
         stateText.setTextColor(COLOR_YELLOW);
-        subText.setText("Küçük bir hareket algılandı");
-        triggerFeedback("yellow");
-    }
-
-    private void goOrange() {
-        if (currentState == State.ORANGE) return;
-        currentState = State.ORANGE;
-        currentColor = COLOR_ORANGE;
-        lastStateChangeMs = SystemClock.elapsedRealtime();
-        alertBar.setVisibility(View.GONE);
-        stateText.setText("ORTA SARSINTI");
-        stateText.setTextColor(COLOR_ORANGE);
-        subText.setText("Belirgin titreşim var");
-        triggerFeedback("orange");
+        subText.setText("Belirgin hareket algılandı");
+        triggerYellowFeedback();
     }
 
     private void goRed() {
-        if (currentState == State.RED) return;
+        boolean alreadyRed = (currentState == State.RED);
         currentState = State.RED;
         currentColor = COLOR_RED;
-        lastStateChangeMs = SystemClock.elapsedRealtime();
         alertBar.setVisibility(View.GONE);
-        stateText.setText("ŞİDDETLİ SARSINTI!");
+        stateText.setText("GÜÇLÜ SARSINTI");
         stateText.setTextColor(COLOR_RED);
-        subText.setText("Güçlü hareket algılandı");
-        triggerFeedback("red");
+        subText.setText("Güvenliğinizi kontrol edin");
+        if (!alreadyRed) startRedAlarm();
     }
 
     private void goGray() {
         currentState = State.PAUSED_GRAY;
         currentColor = COLOR_GRAY;
+        stopRedAlarm();
         alertBar.setVisibility(View.VISIBLE);
         alertBar.setBackgroundColor(Color.DKGRAY);
-        alertBar.setText("CİHAZ ELİNİZE ALINDI\nÖLÇÜM DURDURULDU");
-        stateText.setText("DURAKLATILDI");
+        alertBar.setText("CİHAZIN KONUMU DEĞİŞTİ\nİZLEME DURDURULDU");
+        stateText.setText("İZLEME BEKLEMEDE");
         stateText.setTextColor(COLOR_GRAY);
-        subText.setText("Devam etmek için kalibre edin");
+        subText.setText("Yeniden başlatmak için kalibre edin");
         orbView.setLevel(0f, COLOR_GRAY);
         btnRecalibrate.setVisibility(View.VISIBLE);
     }
 
-    // ================= VİBRASYON =================
+    // ================= BİLDİRİMLER =================
 
-    private void triggerFeedback(String level) {
-        if (vibrator == null || !vibrator.hasVibrator()) return;
-
-        boolean vibOn = prefs.getBoolean(level + "_vibration", true);
-        if (!vibOn) return;
-
-        long[] pattern;
-        switch (level) {
-            case "yellow": pattern = new long[]{0, 100}; break;
-            case "orange": pattern = new long[]{0, 200, 100, 200}; break;
-            case "red":    pattern = new long[]{0, 400, 100, 400, 100, 400}; break;
-            default:       return;
+    private void triggerYellowFeedback() {
+        if (prefs.getBoolean("yellow_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
+            vibrator.vibrate(new long[]{0, 150}, -1);
         }
-        vibrator.vibrate(pattern, -1);
+        if (prefs.getBoolean("yellow_sound", true)) {
+            playOnceSound();
+        }
+        if (prefs.getBoolean("yellow_flash", false)) {
+            briefFlash();
+        }
+    }
+
+    private void startRedAlarm() {
+        redAlarmActive = true;
+        redAlarmMuted = false;
+        btnMute.setVisibility(View.VISIBLE);
+
+        if (prefs.getBoolean("red_wake_screen", true)) {
+            wakeScreen();
+        }
+        if (prefs.getBoolean("red_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
+            long[] pattern = {0, 400, 150, 400, 150, 400};
+            vibrator.vibrate(pattern, prefs.getBoolean("red_continuous", true) ? 0 : -1);
+        }
+        if (prefs.getBoolean("red_sound", true)) {
+            startLoopingAlarmSound();
+        }
+        if (prefs.getBoolean("red_flash", true)) {
+            redAlarmHandler.post(redBlinkRunnable);
+        }
+        // "Susturulana kadar devam et" kapalıysa birkaç saniye sonra otomatik durdur
+        if (!prefs.getBoolean("red_continuous", true)) {
+            redAlarmHandler.postDelayed(new Runnable() {
+                @Override public void run() { stopRedAlarm(); }
+            }, 5000);
+        }
+    }
+
+    private void muteRedAlarm() {
+        redAlarmMuted = true;
+        if (vibrator != null) vibrator.cancel();
+        stopLoopingAlarmSound();
+        if (torchOn) toggleTorch(false);
+        btnMute.setVisibility(View.GONE);
+    }
+
+    private void stopRedAlarm() {
+        redAlarmActive = false;
+        redAlarmMuted = false;
+        redAlarmHandler.removeCallbacksAndMessages(null);
+        if (vibrator != null) vibrator.cancel();
+        stopLoopingAlarmSound();
+        if (torchOn) toggleTorch(false);
+        btnMute.setVisibility(View.GONE);
+    }
+
+    private void playOnceSound() {
+        try {
+            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            Ringtone r = RingtoneManager.getRingtone(this, uri);
+            if (r != null) r.play();
+        } catch (Exception ignored) {}
+    }
+
+    private void startLoopingAlarmSound() {
+        try {
+            stopLoopingAlarmSound();
+            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            alarmPlayer = new MediaPlayer();
+            alarmPlayer.setDataSource(this, uri);
+            alarmPlayer.setLooping(true);
+            alarmPlayer.prepare();
+            alarmPlayer.start();
+        } catch (Exception ignored) {}
+    }
+
+    private void stopLoopingAlarmSound() {
+        if (alarmPlayer != null) {
+            try { alarmPlayer.stop(); alarmPlayer.release(); } catch (Exception ignored) {}
+            alarmPlayer = null;
+        }
+    }
+
+    private void briefFlash() {
+        toggleTorch(true);
+        redAlarmHandler.postDelayed(new Runnable() {
+            @Override public void run() { toggleTorch(false); }
+        }, 250);
+    }
+
+    private void toggleTorch(boolean on) {
+        if (cameraId == null || cameraManager == null) return;
+        try {
+            cameraManager.setTorchMode(cameraId, on);
+            torchOn = on;
+        } catch (CameraAccessException ignored) {}
+    }
+
+    private String getFirstCameraWithFlash() {
+        try {
+            for (String id : cameraManager.getCameraIdList()) {
+                Boolean has = cameraManager.getCameraCharacteristics(id)
+                    .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                if (has != null && has) return id;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private void wakeScreen() {
+        getWindow().addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        );
     }
 
     // ================= EKRAN GÖRÜNTÜSÜ =================
@@ -403,10 +547,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             fw.close();
 
             Toast.makeText(this, "Log kaydedildi:\n" + file.getName(), Toast.LENGTH_SHORT).show();
-
             sensorLog = new StringBuilder();
             logLineCount = 0;
-
         } catch (Exception e) {
             Toast.makeText(this, "Log kaydedilemedi: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
