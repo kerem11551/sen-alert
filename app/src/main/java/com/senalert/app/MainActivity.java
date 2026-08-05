@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     private Button btnRecalibrate;
     private Button btnCapture;
     private Button btnMute;
+    private Button btnToggle;
     private View rootLayout;
     private ShakeOrbView orbView;
     private EkgGraphView ekgView;
@@ -48,7 +49,6 @@ public class MainActivity extends Activity {
     private static final int COLOR_RED    = Color.parseColor("#FF3B30");
     private static final int COLOR_GRAY   = Color.parseColor("#8A9C9A");
 
-    // Top sadece durum GERÇEKTEN değiştiğinde güncellensin diye son bilinen durumu tutuyoruz
     private String lastAppliedState = null;
 
     private float lastX, lastY, lastZ, lastDXY, lastDZ;
@@ -67,7 +67,6 @@ public class MainActivity extends Activity {
             lastDXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
             lastDZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
 
-            // Grafik HER örnekte akar (tek hareketli öğe budur)
             ekgView.pushSample(score / 100f);
 
             sensorText.setText(String.format(
@@ -76,7 +75,6 @@ public class MainActivity extends Activity {
             ));
             appendLog();
 
-            // Top SADECE durum değiştiğinde güncellensin
             if (!state.equals(lastAppliedState)) {
                 lastAppliedState = state;
                 applyState(state);
@@ -98,6 +96,7 @@ public class MainActivity extends Activity {
         btnRecalibrate  = findViewById(R.id.btnRecalibrate);
         btnCapture      = findViewById(R.id.btnCapture);
         btnMute         = findViewById(R.id.btnMute);
+        btnToggle       = findViewById(R.id.btnToggle);
         rootLayout      = findViewById(R.id.rootLayout);
         orbView         = findViewById(R.id.orbView);
         ekgView         = findViewById(R.id.ekgView);
@@ -105,7 +104,10 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
 
         requestNotificationPermissionIfNeeded();
-        startMonitoringService();
+
+        btnToggle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { onToggleClicked(); }
+        });
 
         findViewById(R.id.btnSettings).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -142,9 +144,9 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Başlangıç görünümü: nötr (gri, yaysız)
         orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
         updateLastStrongText();
+        refreshToggleButtonFromState();
     }
 
     @Override
@@ -152,13 +154,44 @@ public class MainActivity extends Activity {
         super.onResume();
         registerReceiver(stateReceiver, new IntentFilter(Constants.ACTION_STATE));
         updateLastStrongText();
+        refreshToggleButtonFromState();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(stateReceiver); } catch (Exception ignored) {}
-        // Servisi burada durdurmuyoruz - arka planda çalışmaya devam etmesi amacımız
+        // Servis burada durdurulmuyor - kullanıcı DURDUR'a basmadıkça arka planda çalışmaya devam eder
+    }
+
+    // ================= BAŞLAT / DURDUR =================
+
+    private void onToggleClicked() {
+        boolean running = prefs.getBoolean("service_running", false);
+        if (running) {
+            stopService(new Intent(this, SensorService.class));
+            lastAppliedState = null;
+            orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
+            stateText.setText("İZLEME DURDU");
+            stateText.setTextColor(COLOR_GRAY);
+            alertBar.setVisibility(View.GONE);
+            btnMute.setVisibility(View.GONE);
+            btnRecalibrate.setVisibility(View.GONE);
+            btnToggle.setText("BAŞLAT");
+        } else {
+            requestNotificationPermissionIfNeeded();
+            startMonitoringService();
+            btnToggle.setText("DURDUR");
+        }
+    }
+
+    private void refreshToggleButtonFromState() {
+        boolean running = prefs.getBoolean("service_running", false);
+        btnToggle.setText(running ? "DURDUR" : "BAŞLAT");
+        if (!running) {
+            stateText.setText("İZLEME DURDU");
+            stateText.setTextColor(COLOR_GRAY);
+        }
     }
 
     private void startMonitoringService() {
