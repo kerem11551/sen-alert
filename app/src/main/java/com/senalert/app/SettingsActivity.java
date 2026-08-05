@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.CheckBox;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -17,8 +19,8 @@ public class SettingsActivity extends Activity {
     private SeekBar seekSensitivity;
     private TextView tvSensitivityValue;
 
-    private CheckBox cbYellowSound, cbYellowVib, cbYellowFlash;
-    private CheckBox cbRedSound, cbRedVib, cbRedFlash, cbRedWake;
+    private CheckBox cbSound, cbVib, cbFlash;
+    private RadioGroup durationGroup;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,15 +31,10 @@ public class SettingsActivity extends Activity {
 
         seekSensitivity    = findViewById(R.id.seekSensitivity);
         tvSensitivityValue = findViewById(R.id.tvSensitivityValue);
-
-        cbYellowSound = findViewById(R.id.cbYellowSound);
-        cbYellowVib   = findViewById(R.id.cbYellowVib);
-        cbYellowFlash = findViewById(R.id.cbYellowFlash);
-
-        cbRedSound = findViewById(R.id.cbRedSound);
-        cbRedVib   = findViewById(R.id.cbRedVib);
-        cbRedFlash = findViewById(R.id.cbRedFlash);
-        cbRedWake  = findViewById(R.id.cbRedWake);
+        cbSound  = findViewById(R.id.cbSound);
+        cbVib    = findViewById(R.id.cbVib);
+        cbFlash  = findViewById(R.id.cbFlash);
+        durationGroup = findViewById(R.id.durationGroup);
 
         int savedSensitivity = prefs.getInt("sensitivity", 5);
         seekSensitivity.setMax(9);
@@ -55,14 +52,17 @@ public class SettingsActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        bindCheckbox(cbYellowSound, "yellow_sound", true);
-        bindCheckbox(cbYellowVib,   "yellow_vibration", true);
-        bindCheckbox(cbYellowFlash, "yellow_flash", false);
+        bindCheckbox(cbSound, "alert_sound", true);
+        bindCheckbox(cbVib,   "alert_vibration", true);
+        bindCheckbox(cbFlash, "alert_flash", true);
 
-        bindCheckbox(cbRedSound, "red_sound", true);
-        bindCheckbox(cbRedVib,   "red_vibration", true);
-        bindCheckbox(cbRedFlash, "red_flash", true);
-        bindCheckbox(cbRedWake,  "red_wake_screen", true);
+        int savedDuration = prefs.getInt("alert_duration_sec", 5);
+        int checkedId = savedDuration == 3 ? R.id.dur3 : savedDuration == 10 ? R.id.dur10 : R.id.dur5;
+        durationGroup.check(checkedId);
+        durationGroup.setOnCheckedChangeListener((group, checkedIdNow) -> {
+            int seconds = checkedIdNow == R.id.dur3 ? 3 : checkedIdNow == R.id.dur10 ? 10 : 5;
+            prefs.edit().putInt("alert_duration_sec", seconds).apply();
+        });
 
         findViewById(R.id.btnSave).setOnClickListener(new View.OnClickListener() {
             @Override
