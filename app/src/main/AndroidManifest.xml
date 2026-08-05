@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.senalert.app">
 
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
 
     <application
         android:allowBackup="true"
         android:label="Sen-Alert"
+        android:icon="@drawable/ic_launcher"
         android:theme="@android:style/Theme.Black.NoTitleBar">
 
         <activity
@@ -20,9 +24,12 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".SettingsActivity"
+        <activity
+            android:name=".SettingsActivity"
             android:exported="false"/>
 
+        <!-- İleride arka plan/kilit ekranı algılaması için ayrılmış,
+             şu an MainActivity sensörü doğrudan dinliyor, servis henüz devrede değil -->
         <service
             android:name=".SensorService"
             android:exported="false"/>
