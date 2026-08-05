@@ -43,41 +43,8 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🟡 Sarsıntı Algılandı"
-            android:textColor="#FFD60A"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginTop="28dp"/>
-
-        <CheckBox
-            android:id="@+id/cbYellowSound"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Ses"
+            android:text="Bildirim Türleri"
             android:textColor="#FFFFFF"
-            android:layout_marginTop="6dp"/>
-
-        <CheckBox
-            android:id="@+id/cbYellowVib"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Titreşim"
-            android:textColor="#FFFFFF"
-            android:layout_marginTop="4dp"/>
-
-        <CheckBox
-            android:id="@+id/cbYellowFlash"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Flaş"
-            android:textColor="#FFFFFF"
-            android:layout_marginTop="4dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔴 Güçlü Sarsıntı"
-            android:textColor="#FF3B30"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginTop="28dp"/>
@@ -85,42 +52,83 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Alarm 4 saniye çalar ve otomatik durur — panik yaratmamak için sınırsız çalmaz."
+            android:text="Hem sarsıntı hem güçlü sarsıntı için aynı ayar geçerlidir - eşik farklıdır, uyarı türü aynıdır."
             android:textColor="#5E7472"
             android:textSize="11sp"
             android:layout_marginTop="2dp"/>
 
         <CheckBox
-            android:id="@+id/cbRedSound"
+            android:id="@+id/cbSound"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Tam Ses (Alarm)"
+            android:text="🔊 Ses"
             android:textColor="#FFFFFF"
-            android:layout_marginTop="6dp"/>
+            android:layout_marginTop="8dp"/>
 
         <CheckBox
-            android:id="@+id/cbRedVib"
+            android:id="@+id/cbVib"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Titreşim"
+            android:text="📳 Titreşim"
             android:textColor="#FFFFFF"
             android:layout_marginTop="4dp"/>
 
         <CheckBox
-            android:id="@+id/cbRedFlash"
+            android:id="@+id/cbFlash"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Flaş"
+            android:text="🔦 Flaş"
             android:textColor="#FFFFFF"
             android:layout_marginTop="4dp"/>
 
-        <CheckBox
-            android:id="@+id/cbRedWake"
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Ekranı Aç"
+            android:text="Uyarı Süresi"
             android:textColor="#FFFFFF"
-            android:layout_marginTop="4dp"/>
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="28dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Uyarı bu süre kadar çalar, sonra otomatik durur. Durum devam ederse 20 saniye sonra bir kez daha tekrarlanır."
+            android:textColor="#5E7472"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp"/>
+
+        <RadioGroup
+            android:id="@+id/durationGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <RadioButton
+                android:id="@+id/dur3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3 sn"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="20dp"/>
+
+            <RadioButton
+                android:id="@+id/dur5"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="5 sn"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="20dp"/>
+
+            <RadioButton
+                android:id="@+id/dur10"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="10 sn"
+                android:textColor="#FFFFFF"/>
+
+        </RadioGroup>
 
         <Button
             android:id="@+id/btnSave"
