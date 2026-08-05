@@ -13,7 +13,7 @@
 
         <com.senalert.app.ShakeOrbView
             android:id="@+id/orbView"
-            android:layout_width="150dp"
+            android:layout_width="220dp"
             android:layout_height="150dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="8dp"/>
@@ -23,21 +23,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="10dp"
             android:text="SABİT"
             android:textColor="#22E88A"
-            android:textSize="28sp"
+            android:textSize="24sp"
             android:textStyle="bold"/>
-
-        <TextView
-            android:id="@+id/subText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="2dp"
-            android:text="Normal seviyede"
-            android:textColor="#8A9C9A"
-            android:textSize="14sp"/>
 
         <TextView
             android:id="@+id/lastStrongText"
@@ -89,47 +79,12 @@
             android:textColor="#5E7472"
             android:textSize="12sp"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginTop="18dp"
-            android:padding="14dp"
-            android:background="#0F1517">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="ANLIK SARSINTI SEVİYESİ"
-                android:textColor="#5E7472"
-                android:textSize="11sp"
-                android:letterSpacing="0.08"/>
-
-            <TextView
-                android:id="@+id/levelNumberText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0"
-                android:textColor="#22E88A"
-                android:textSize="42sp"
-                android:textStyle="bold"
-                android:layout_marginTop="4dp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="/ 100"
-                android:textColor="#5E7472"
-                android:textSize="12sp"/>
-        </LinearLayout>
-
         <TextView
             android:id="@+id/btnInfoToggle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="18dp"
             android:padding="8dp"
             android:text="ℹ️ Teknik Bilgi"
             android:textColor="#5E7472"
