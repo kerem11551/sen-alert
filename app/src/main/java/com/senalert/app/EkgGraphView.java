@@ -10,9 +10,9 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * EKG tarzı akan sarsıntı grafiği - 3 çizgi de (yeşil/sarı/kırmızı) gösterilir.
- * ÖNEMLİ: tüm boyutlar ekran yoğunluğuna (density) göre ölçekleniyor,
- * aksi halde yüksek yoğunluklu ekranlarda metin/çizgiler çok küçük kalır.
+ * EKG tarzı akan sarsıntı grafiği - 3 çizgi (yeşil/sarı/kırmızı).
+ * İnce çizgi + hafif parlama - eskisi kalınlık/parlama yüzünden
+ * çizginin eşiklere göre tam nerede olduğunu belirsizleştiriyordu.
  */
 public class EkgGraphView extends View {
 
@@ -21,15 +21,15 @@ public class EkgGraphView extends View {
     private int sampleCount = 0;
     private int writeIndex = 0;
 
-    private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint thresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path wavePath = new Path();
 
-    private static final float LINE_GREEN  = 0.08f;
-    private static final float LINE_YELLOW = 0.35f;
-    private static final float LINE_RED    = 0.72f;
+    // Genişletilmiş aralıklar
+    private static final float LINE_GREEN  = 0.06f;
+    private static final float LINE_YELLOW = 0.30f;
+    private static final float LINE_RED    = 0.80f;
 
     public EkgGraphView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -37,28 +37,21 @@ public class EkgGraphView extends View {
         float density = getResources().getDisplayMetrics().density;
         float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
 
-        glowPaint.setColor(Color.parseColor("#F4FBFA"));
-        glowPaint.setStyle(Paint.Style.STROKE);
-        glowPaint.setStrokeWidth(11f * density);
-        glowPaint.setStrokeJoin(Paint.Join.ROUND);
-        glowPaint.setStrokeCap(Paint.Cap.ROUND);
-        glowPaint.setAlpha(70);
-        glowPaint.setShadowLayer(18f * density, 0, 0, Color.parseColor("#FFFFFF"));
-
+        // İnce, hafif parlamalı çizgi
         linePaint.setColor(Color.parseColor("#FFFFFF"));
         linePaint.setStyle(Paint.Style.STROKE);
-        linePaint.setStrokeWidth(4.5f * density);
+        linePaint.setStrokeWidth(2.2f * density);
         linePaint.setStrokeJoin(Paint.Join.ROUND);
         linePaint.setStrokeCap(Paint.Cap.ROUND);
-        linePaint.setShadowLayer(10f * density, 0, 0, Color.parseColor("#FFFFFF"));
+        linePaint.setShadowLayer(4f * density, 0, 0, Color.parseColor("#F4FBFA"));
         setLayerType(LAYER_TYPE_SOFTWARE, null);
 
         thresholdPaint.setStyle(Paint.Style.STROKE);
-        thresholdPaint.setStrokeWidth(2.2f * density);
+        thresholdPaint.setStrokeWidth(2f * density);
         thresholdPaint.setPathEffect(new DashPathEffect(new float[]{10f * density, 8f * density}, 0));
         thresholdPaint.setAlpha(190);
 
-        labelPaint.setTextSize(18f * scaledDensity); // ~18sp
+        labelPaint.setTextSize(18f * scaledDensity);
         labelPaint.setAntiAlias(true);
         labelPaint.setFakeBoldText(true);
     }
@@ -97,7 +90,6 @@ public class EkgGraphView extends View {
             if (i == 0) wavePath.moveTo(x, y);
             else wavePath.lineTo(x, y);
         }
-        canvas.drawPath(wavePath, glowPaint);
         canvas.drawPath(wavePath, linePaint);
     }
 
@@ -107,7 +99,7 @@ public class EkgGraphView extends View {
         thresholdPaint.setColor(Color.parseColor(colorHex));
         canvas.drawLine(0, y, w, y, thresholdPaint);
         labelPaint.setColor(Color.parseColor(colorHex));
-        labelPaint.setShadowLayer(6f, 0, 0, Color.parseColor(colorHex));
+        labelPaint.setShadowLayer(5f, 0, 0, Color.parseColor(colorHex));
         canvas.drawText(label, w - labelPaint.measureText(label) - 10f, y - 10f, labelPaint);
     }
 }
