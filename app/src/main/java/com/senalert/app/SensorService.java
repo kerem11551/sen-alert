@@ -34,9 +34,13 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: "elde alındı" tespiti artık SADECE sarı/kırmızıda değil,
- * SABİT (yeşil) durumdayken de çalışıyor - hangi durumda olursa olsun
- * telefon elden alınınca duraklıyor, "Yeniden Kalibre Et" ile devam eder.
+ * KRİTİK DÜZELTME (bu turda): PAUSED_GRAY durumuna geçildiğinde artık
+ * MainActivity'ye yayın (broadcast) göndermeyi KESMİYORUZ. Eskiden
+ * "if (currentState == PAUSED_GRAY) return;" en tepede olduğu için,
+ * duraklama anında ekran son aldığı yayında donup kalıyordu - bildirim
+ * çubuğu doğru güncelleniyordu (çünkü o direkt çağrılıyor) ama ekran
+ * hiç haber almıyordu. Artık broadcastState() PAUSED_GRAY dahil her
+ * zaman çağrılıyor, sadece dedektör mantığı (eşik kontrolü vb.) atlanıyor.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -240,13 +244,14 @@ public class SensorService extends Service implements SensorEventListener {
             prefs.edit().putLong("last_heartbeat", System.currentTimeMillis()).apply();
         }
 
-        if (currentState == State.PAUSED_GRAY) return;
-
         float frac = computeFrac(dXY);
         int score = Math.round(frac * 100);
         pendingScoreForNotif = score;
 
+        // ---- ARTIK HER ZAMAN yayınlanır, PAUSED_GRAY dahil - ekran asla donmaz ----
         broadcastState(score, x, y, z, dXY, dz);
+
+        if (currentState == State.PAUSED_GRAY) return; // sadece dedektör mantığı atlanır
 
         if (currentState == State.CALIBRATING) {
             if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN);
@@ -254,7 +259,6 @@ public class SensorService extends Service implements SensorEventListener {
             return;
         }
 
-        // ---- Elde alındı tespiti - ARTIK HER DURUMDA (SABİT dahil) çalışır ----
         if (dz >= HAND_Z_DELTA) {
             if (handPendingSinceMs == 0) handPendingSinceMs = now;
             if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
@@ -336,7 +340,7 @@ public class SensorService extends Service implements SensorEventListener {
         currentState = State.GREEN;
         stopAlarm();
         handler.removeCallbacks(repeatCheckRunnable);
-        updateNotification("🟢", "SABİT", 0);
+        updateNotification("🟢", "NORMAL", 0);
     }
 
     private void goYellow() {
@@ -495,7 +499,7 @@ public class SensorService extends Service implements SensorEventListener {
 
     private String stateLabel() {
         switch (currentState) {
-            case GREEN:  return "SABİT";
+            case GREEN:  return "NORMAL";
             case YELLOW: return "SARSINTI ALGILANDI";
             case RED:    return "GÜÇLÜ SARSINTI";
             default:     return "";
