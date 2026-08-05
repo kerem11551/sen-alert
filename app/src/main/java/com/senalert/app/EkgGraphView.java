@@ -10,9 +10,7 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * EKG tarzı akan sarsıntı grafiği - 3 çizgi (yeşil/sarı/kırmızı).
- * İnce çizgi + hafif parlama - eskisi kalınlık/parlama yüzünden
- * çizginin eşiklere göre tam nerede olduğunu belirsizleştiriyordu.
+ * EKG tarzı akan sarsıntı grafiği - 3 çizgi (yeşil/sarı/kırmızı), emoji kareli etiketler.
  */
 public class EkgGraphView extends View {
 
@@ -26,7 +24,6 @@ public class EkgGraphView extends View {
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path wavePath = new Path();
 
-    // Genişletilmiş aralıklar
     private static final float LINE_GREEN  = 0.06f;
     private static final float LINE_YELLOW = 0.30f;
     private static final float LINE_RED    = 0.80f;
@@ -37,7 +34,6 @@ public class EkgGraphView extends View {
         float density = getResources().getDisplayMetrics().density;
         float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
 
-        // İnce, hafif parlamalı çizgi
         linePaint.setColor(Color.parseColor("#FFFFFF"));
         linePaint.setStyle(Paint.Style.STROKE);
         linePaint.setStrokeWidth(2.2f * density);
@@ -73,9 +69,9 @@ public class EkgGraphView extends View {
         float bottomMargin = h * 0.10f;
         float usableH = h - topMargin - bottomMargin;
 
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED,    "#FF3B30", "GÜÇLÜ");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#FFD60A", "SARSINTI");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_GREEN,  "#22E88A", "SABİT");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED,    "#FF3B30", "🟥 GÜÇLÜ");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#FFD60A", "🟨 SARSINTI");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_GREEN,  "#22E88A", "🟩 NORMAL");
 
         if (sampleCount < 2) return;
 
