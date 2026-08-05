@@ -26,7 +26,6 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.Vibrator;
-import android.view.WindowManager;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -35,12 +34,11 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * UYARI FELSEFESİ (basitleştirildi):
- * - Sarı ve kırmızı için AYNI bildirim türleri (Ses/Titreşim/Flaş aç-kapa) ve
- *   AYNI süre kullanılır - sadece eşik (ne zaman tetiklendiği) farklıdır.
- * - Kademeli/artan şiddet YOK. Sabit süreli tek bir uyarı patlaması olur.
- * - Durum aynı kalmaya devam ederse (örn. hâlâ kırmızı), REPEAT_INTERVAL_MS
- *   sonra uyarı bir kez daha tekrarlanır. Sürekli/kesintisiz değildir.
+ * ÖNEMLİ DERS (bu turda öğrenildi): SENSOR_DELAY_FASTEST'e geçmek grafiği
+ * bozdu ve "elde alındı" (dz) tespitini anlık gürültüye karşı savunmasız
+ * bıraktı - alarmları daha başlamadan kesiyordu. SENSOR_DELAY_UI'ye
+ * dönüldü; ekran-kapalı güvenilirliği artık AlarmManager watchdog ile
+ * sağlanıyor (Sig-Fi Compass'takiyle aynı yöntem).
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -70,23 +68,34 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long YELLOW_SUSTAIN_MS = 800;
     private static final long RED_SUSTAIN_MS = 500;
     private static final long RELEASE_SUSTAIN_MS = 500;
-    // Durum devam ederse uyarı bu kadar süre sonra bir kez daha tekrarlanır
     private static final long REPEAT_INTERVAL_MS = 20000;
 
     private static final float BASE_YELLOW = 0.15f;
     private static final float BASE_RED    = 0.90f;
     private float thYellow = BASE_YELLOW;
     private float thRed    = BASE_RED;
+
+    // ---- "Elde alındı" tespiti artık süre filtreli (anlık gürültüye karşı) ----
     private static final float HAND_Z_DELTA = 1.0f;
+    private static final long HAND_SUSTAIN_MS = 200;
+    private long handPendingSinceMs = 0;
+
     private static final int SMOOTH_WINDOW = 6;
     private final float[] magBuffer = new float[SMOOTH_WINDOW];
     private int magIndex = 0;
     private static final float INSTANT_RED_OVERRIDE = 2.0f;
 
+    // ---- Grafik sensör hızından bağımsız, sabit aralıkla beslenir ----
+    private static final long GRAPH_PUSH_INTERVAL_MS = 60;
+    private long lastGraphPushMs = 0;
+
+    // ---- Watchdog için heartbeat (canlılık kaydı) ----
+    private static final long HEARTBEAT_INTERVAL_MS = 60000;
+    private long lastHeartbeatMs = 0;
+
     private final Handler handler = new Handler();
     private boolean alarmActive = false;
     private boolean alarmMuted = false;
-    private long lastAlarmFiredMs = 0;
 
     private long lastNotifUpdateMs = 0;
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
@@ -103,7 +112,6 @@ public class SensorService extends Service implements SensorEventListener {
         @Override public void run() { stopAlarm(); }
     };
 
-    // Durum sürdükçe periyodik olarak "hâlâ aynı durumda mıyız" diye kontrol eder
     private final Runnable repeatCheckRunnable = new Runnable() {
         @Override public void run() {
             if (currentState == State.YELLOW || currentState == State.RED) {
@@ -147,12 +155,16 @@ public class SensorService extends Service implements SensorEventListener {
         registerReceiver(controlReceiver, filter);
 
         updateSensitivity();
-        // DENEME: SENSOR_DELAY_UI yerine SENSOR_DELAY_FASTEST - ekran kapalıyken
-        // bazı cihazlarda toplu (batch) teslimi azaltabilir. Sorun çözülmezse
-        // pil tüketimi gereksiz artmasın diye SENSOR_DELAY_UI'ye geri dönülebilir.
-        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
 
-        prefs.edit().putBoolean("service_running", true).apply();
+        prefs.edit()
+            .putBoolean("service_running", true)
+            .putLong("last_heartbeat", System.currentTimeMillis())
+            .apply();
+
+        // Sig-Fi'deki gibi: watchdog döngüsünü başlat
+        WatchdogReceiver.scheduleNext(this);
+
         goCalibrating();
     }
 
@@ -226,6 +238,14 @@ public class SensorService extends Service implements SensorEventListener {
 
         lastX = x; lastY = y; lastZ = z;
 
+        long now = SystemClock.elapsedRealtime();
+
+        // Heartbeat - watchdog için canlılık kaydı
+        if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
+            lastHeartbeatMs = now;
+            prefs.edit().putLong("last_heartbeat", System.currentTimeMillis()).apply();
+        }
+
         if (currentState == State.PAUSED_GRAY) return;
 
         float frac = computeFrac(dXY);
@@ -234,16 +254,22 @@ public class SensorService extends Service implements SensorEventListener {
         broadcastState(score, x, y, z, dXY, dz);
         maybeUpdateNotification(score);
 
-        long now = SystemClock.elapsedRealtime();
-
         if (currentState == State.CALIBRATING) {
             if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN);
             return;
         }
 
-        if (currentState != State.GREEN && dz >= HAND_Z_DELTA) {
-            goGray();
-            return;
+        // ---- Elde alındı tespiti - artık 200ms sürdürülmesi gerekiyor ----
+        if (currentState != State.GREEN) {
+            if (dz >= HAND_Z_DELTA) {
+                if (handPendingSinceMs == 0) handPendingSinceMs = now;
+                if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
+                    goGray();
+                    return;
+                }
+            } else {
+                handPendingSinceMs = 0;
+            }
         }
 
         if (dMag >= INSTANT_RED_OVERRIDE) {
@@ -301,6 +327,7 @@ public class SensorService extends Service implements SensorEventListener {
     private void goCalibrating() {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
+        handPendingSinceMs = 0;
         stopAlarm();
         handler.removeCallbacks(repeatCheckRunnable);
         updateNotification("🟤", "KALİBRASYON YAPILIYOR...", 0);
@@ -331,7 +358,6 @@ public class SensorService extends Service implements SensorEventListener {
         updateNotification("🔴", "GÜÇLÜ SARSINTI", 0);
         if (!already) {
             saveLastAlertEvent();
-            wakeScreenBriefly();
             triggerAlarm();
             handler.removeCallbacks(repeatCheckRunnable);
             handler.postDelayed(repeatCheckRunnable, REPEAT_INTERVAL_MS);
@@ -350,15 +376,10 @@ public class SensorService extends Service implements SensorEventListener {
         prefs.edit().putString("last_alert_time", time).apply();
     }
 
-    // ================= UYARI (tek ortak mantık - sarı/kırmızı aynı) =================
+    // ================= UYARI =================
 
     private void triggerAlarm() {
-        lastAlarmFiredMs = SystemClock.elapsedRealtime();
-        if (currentState == State.RED) saveLastAlertEvent();
-        else {
-            String time = new SimpleDateFormat("HH:mm · dd.MM.yyyy", Locale.US).format(new Date());
-            prefs.edit().putString("last_alert_time", time).apply();
-        }
+        if (currentState != State.RED) saveLastAlertEvent();
 
         alarmActive = true;
         alarmMuted = false;
@@ -367,7 +388,7 @@ public class SensorService extends Service implements SensorEventListener {
         long durationMs = durationSec * 1000L;
 
         if (prefs.getBoolean("alert_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
-            vibrator.vibrate(new long[]{0, 400, 200, 400, 200, 400}, 0); // 0 = tekrar et, süre dolunca cancel edilecek
+            vibrator.vibrate(new long[]{0, 400, 200, 400, 200, 400}, 0);
         }
         if (prefs.getBoolean("alert_sound", true)) startLoopingAlarmSound();
         if (prefs.getBoolean("alert_flash", true)) handler.post(blinkRunnable);
@@ -429,13 +450,6 @@ public class SensorService extends Service implements SensorEventListener {
         return null;
     }
 
-    /** Kırmızıda ekranı açmayı dener (yalnızca uygulama halihazırda ön planda/arka planda canlıysa çalışır) */
-    private void wakeScreenBriefly() {
-        // Not: Servis bir Activity değil, doğrudan pencere bayrağı ekleyemez.
-        // Gerçek ekran açma MainActivity üzerinden, kullanıcı bildirime dokunduğunda olur.
-        // Burada sadece log/ileride genişletme için yer tutucu.
-    }
-
     // ================= BİLDİRİM (tek satır) =================
 
     private void createNotificationChannel() {
@@ -487,6 +501,11 @@ public class SensorService extends Service implements SensorEventListener {
     }
 
     private void broadcastState(int score, float x, float y, float z, float dXY, float dZ) {
+        long now = SystemClock.elapsedRealtime();
+        // Grafik sensör hızından bağımsız, sabit aralıkla beslenir
+        if (now - lastGraphPushMs < GRAPH_PUSH_INTERVAL_MS) return;
+        lastGraphPushMs = now;
+
         Intent i = new Intent(Constants.ACTION_STATE);
         i.setPackage(getPackageName());
         i.putExtra(Constants.EXTRA_STATE, currentState.name());
