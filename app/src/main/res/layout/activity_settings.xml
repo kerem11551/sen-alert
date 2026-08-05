@@ -4,12 +4,12 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="16dp"
-    android:background="#000000">
+    android:background="#05070707">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Sensitivity"
+        android:text="Hassasiyet"
         android:textColor="#FFFFFF"
         android:textSize="18sp"/>
 
@@ -17,24 +17,54 @@
         android:id="@+id/seekSensitivity"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="10"
-        android:progress="5"
         android:layout_marginTop="8dp"/>
 
     <TextView
         android:id="@+id/tvSensitivityValue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="5"
+        android:text="10"
         android:textColor="#FFFFFF"
         android:textSize="16sp"
+        android:layout_marginTop="4dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Titreşim Bildirimi"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:layout_marginTop="28dp"/>
+
+    <CheckBox
+        android:id="@+id/cbYellowVib"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hafif sarsıntıda titret"
+        android:textColor="#F5C518"
+        android:layout_marginTop="8dp"/>
+
+    <CheckBox
+        android:id="@+id/cbOrangeVib"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Orta sarsıntıda titret"
+        android:textColor="#FFA500"
+        android:layout_marginTop="4dp"/>
+
+    <CheckBox
+        android:id="@+id/cbRedVib"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Şiddetli sarsıntıda titret"
+        android:textColor="#FF4438"
         android:layout_marginTop="4dp"/>
 
     <Button
         android:id="@+id/btnBack"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="BACK"
-        android:layout_marginTop="24dp"/>
+        android:text="GERİ"
+        android:layout_marginTop="28dp"/>
 
 </LinearLayout>
