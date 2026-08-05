@@ -8,19 +8,13 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -32,13 +26,12 @@ public class MainActivity extends Activity {
     private TextView sensorText;
     private TextView stateText;
     private TextView btnInfoToggle;
-    private TextView lastStrongText;
+    private TextView lastAlertText;
+    private TextView lastBroadcastText;
     private View detailsPanel;
     private Button btnRecalibrate;
-    private Button btnCapture;
     private Button btnMute;
     private Button btnToggle;
-    private View rootLayout;
     private ShakeOrbView orbView;
     private EkgGraphView ekgView;
 
@@ -51,29 +44,28 @@ public class MainActivity extends Activity {
 
     private String lastAppliedState = null;
 
-    private float lastX, lastY, lastZ, lastDXY, lastDZ;
-    private StringBuilder sensorLog = new StringBuilder();
-    private static final int LOG_MAX_LINES = 500;
-    private int logLineCount = 0;
-
     private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String state = intent.getStringExtra(Constants.EXTRA_STATE);
             int score = intent.getIntExtra(Constants.EXTRA_SCORE, 0);
-            lastX = intent.getFloatExtra(Constants.EXTRA_X, 0);
-            lastY = intent.getFloatExtra(Constants.EXTRA_Y, 0);
-            lastZ = intent.getFloatExtra(Constants.EXTRA_Z, 0);
-            lastDXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
-            lastDZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
+            float x = intent.getFloatExtra(Constants.EXTRA_X, 0);
+            float y = intent.getFloatExtra(Constants.EXTRA_Y, 0);
+            float z = intent.getFloatExtra(Constants.EXTRA_Z, 0);
+            float dXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
+            float dZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
 
+            // Grafik her örnekte akar
             ekgView.pushSample(score / 100f);
+
+            // TEŞHİS: bu satır donarsa broadcast alınmıyor demektir (sensör/servis sorunu).
+            // Akıyor ama grafik donuyorsa, sorun özel olarak EkgGraphView çiziminde demektir.
+            lastBroadcastText.setText("Son Broadcast: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
 
             sensorText.setText(String.format(
                 Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f\nHassasiyet: %d",
-                lastX, lastY, lastZ, lastDXY, lastDZ, prefs.getInt("sensitivity", 5)
+                x, y, z, dXY, dZ, prefs.getInt("sensitivity", 5)
             ));
-            appendLog();
 
             if (!state.equals(lastAppliedState)) {
                 lastAppliedState = state;
@@ -87,19 +79,18 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        alertBar        = findViewById(R.id.alertBar);
-        sensorText      = findViewById(R.id.sensorText);
-        stateText       = findViewById(R.id.stateText);
-        btnInfoToggle   = findViewById(R.id.btnInfoToggle);
-        lastStrongText  = findViewById(R.id.lastStrongText);
-        detailsPanel    = findViewById(R.id.detailsPanel);
-        btnRecalibrate  = findViewById(R.id.btnRecalibrate);
-        btnCapture      = findViewById(R.id.btnCapture);
-        btnMute         = findViewById(R.id.btnMute);
-        btnToggle       = findViewById(R.id.btnToggle);
-        rootLayout      = findViewById(R.id.rootLayout);
-        orbView         = findViewById(R.id.orbView);
-        ekgView         = findViewById(R.id.ekgView);
+        alertBar           = findViewById(R.id.alertBar);
+        sensorText          = findViewById(R.id.sensorText);
+        stateText           = findViewById(R.id.stateText);
+        btnInfoToggle       = findViewById(R.id.btnInfoToggle);
+        lastAlertText       = findViewById(R.id.lastAlertText);
+        lastBroadcastText   = findViewById(R.id.lastBroadcastText);
+        detailsPanel         = findViewById(R.id.detailsPanel);
+        btnRecalibrate       = findViewById(R.id.btnRecalibrate);
+        btnMute              = findViewById(R.id.btnMute);
+        btnToggle            = findViewById(R.id.btnToggle);
+        orbView              = findViewById(R.id.orbView);
+        ekgView              = findViewById(R.id.ekgView);
 
         prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
 
@@ -122,13 +113,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        btnCapture.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                captureScreen();
-                saveSensorLog();
-            }
-        });
-
         btnMute.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 sendControl(Constants.ACTION_MUTE);
@@ -145,7 +129,7 @@ public class MainActivity extends Activity {
         });
 
         orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
-        updateLastStrongText();
+        updateLastAlertText();
         refreshToggleButtonFromState();
     }
 
@@ -153,7 +137,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         registerReceiver(stateReceiver, new IntentFilter(Constants.ACTION_STATE));
-        updateLastStrongText();
+        updateLastAlertText();
         refreshToggleButtonFromState();
     }
 
@@ -161,10 +145,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(stateReceiver); } catch (Exception ignored) {}
-        // Servis burada durdurulmuyor - kullanıcı DURDUR'a basmadıkça arka planda çalışmaya devam eder
     }
-
-    // ================= BAŞLAT / DURDUR =================
 
     private void onToggleClicked() {
         boolean running = prefs.getBoolean("service_running", false);
@@ -243,7 +224,8 @@ public class MainActivity extends Activity {
                 stateText.setText("SARSINTI ALGILANDI");
                 stateText.setTextColor(COLOR_YELLOW);
                 btnRecalibrate.setVisibility(View.GONE);
-                btnMute.setVisibility(View.GONE);
+                btnMute.setVisibility(View.VISIBLE);
+                updateLastAlertText();
                 break;
             case "RED":
                 orbView.setState(COLOR_RED, ShakeOrbView.LEVEL_RED);
@@ -252,7 +234,7 @@ public class MainActivity extends Activity {
                 stateText.setTextColor(COLOR_RED);
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.VISIBLE);
-                updateLastStrongText();
+                updateLastAlertText();
                 break;
             case "PAUSED_GRAY":
                 orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
@@ -267,67 +249,10 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void updateLastStrongText() {
-        String last = prefs.getString("last_strong_time", null);
-        lastStrongText.setText(last != null
-            ? "Son Güçlü Sarsıntı: " + last
-            : "Son Güçlü Sarsıntı: —");
-    }
-
-    // ================= EKRAN GÖRÜNTÜSÜ =================
-
-    private void captureScreen() {
-        try {
-            View view = rootLayout;
-            view.setDrawingCacheEnabled(true);
-            Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
-            view.setDrawingCacheEnabled(false);
-
-            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            File dir = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_PICTURES), "SenAlert");
-            if (!dir.exists()) dir.mkdirs();
-
-            File file = new File(dir, "senalert_" + timestamp + ".png");
-            FileOutputStream fos = new FileOutputStream(file);
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            fos.flush();
-            fos.close();
-
-            Toast.makeText(this, "Olay kaydedildi:\n" + file.getName(), Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Ekran görüntüsü alınamadı: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void appendLog() {
-        if (logLineCount >= LOG_MAX_LINES) return;
-        String time = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date());
-        sensorLog.append(String.format(Locale.US,
-            "%s | X:%.2f Y:%.2f Z:%.2f | dXY:%.2f dZ:%.2f\n",
-            time, lastX, lastY, lastZ, lastDXY, lastDZ));
-        logLineCount++;
-    }
-
-    private void saveSensorLog() {
-        try {
-            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            File dir = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOCUMENTS), "SenAlert");
-            if (!dir.exists()) dir.mkdirs();
-
-            File file = new File(dir, "senalert_log_" + timestamp + ".txt");
-            FileWriter fw = new FileWriter(file);
-            fw.write("Sen-Alert Sensor Logu\n");
-            fw.write("Tarih: " + new Date().toString() + "\n");
-            fw.write("==============================\n");
-            fw.write(sensorLog.toString());
-            fw.close();
-
-            sensorLog = new StringBuilder();
-            logLineCount = 0;
-        } catch (Exception e) {
-            Toast.makeText(this, "Log kaydedilemedi: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+    private void updateLastAlertText() {
+        String last = prefs.getString("last_alert_time", null);
+        lastAlertText.setText(last != null
+            ? "Son Uyarı: 🕒 " + last
+            : "Son Uyarı: —");
     }
 }
