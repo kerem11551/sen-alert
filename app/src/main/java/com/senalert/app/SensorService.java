@@ -34,13 +34,11 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * KRİTİK DÜZELTME (bu turda): PAUSED_GRAY durumuna geçildiğinde artık
- * MainActivity'ye yayın (broadcast) göndermeyi KESMİYORUZ. Eskiden
- * "if (currentState == PAUSED_GRAY) return;" en tepede olduğu için,
- * duraklama anında ekran son aldığı yayında donup kalıyordu - bildirim
- * çubuğu doğru güncelleniyordu (çünkü o direkt çağrılıyor) ama ekran
- * hiç haber almıyordu. Artık broadcastState() PAUSED_GRAY dahil her
- * zaman çağrılıyor, sadece dedektör mantığı (eşik kontrolü vb.) atlanıyor.
+ * BU TURDA: "elde alındı" tespiti (dz yüksek) artık ANİ BÜYÜK DARBE
+ * (INSTANT_RED_OVERRIDE) kontrolünden ÖNCE ve onu ENGELLEYECEK şekilde
+ * çalışıyor. Eskiden ikisi yarışıyordu - telefonu kapma hareketi hem
+ * "elde alındı" sayacını başlatıyor hem de aynı anda ani darbe eşiğini
+ * geçip yanlışlıkla kırmızı alarm tetikliyordu.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -248,10 +246,9 @@ public class SensorService extends Service implements SensorEventListener {
         int score = Math.round(frac * 100);
         pendingScoreForNotif = score;
 
-        // ---- ARTIK HER ZAMAN yayınlanır, PAUSED_GRAY dahil - ekran asla donmaz ----
         broadcastState(score, x, y, z, dXY, dz);
 
-        if (currentState == State.PAUSED_GRAY) return; // sadece dedektör mantığı atlanır
+        if (currentState == State.PAUSED_GRAY) return;
 
         if (currentState == State.CALIBRATING) {
             if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN);
@@ -259,13 +256,15 @@ public class SensorService extends Service implements SensorEventListener {
             return;
         }
 
+        // ---- Elde alındı tespiti - ARTIK diğer tüm alarm mantığını ENGELLER ----
+        // (sürmese bile, dz yüksekken hiçbir alarm/eşik kontrolü çalışmaz)
         if (dz >= HAND_Z_DELTA) {
             if (handPendingSinceMs == 0) handPendingSinceMs = now;
             if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
                 goGray();
-                maybeUpdateNotification();
-                return;
             }
+            maybeUpdateNotification();
+            return;
         } else {
             handPendingSinceMs = 0;
         }
