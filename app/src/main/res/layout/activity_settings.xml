@@ -40,12 +40,11 @@
             android:textSize="16sp"
             android:layout_marginTop="4dp"/>
 
-        <!-- ==================== SARI ==================== -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🟡 Sarsıntı Algılandı"
-            android:textColor="#F5C518"
+            android:textColor="#FFD60A"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginTop="28dp"/>
@@ -74,15 +73,22 @@
             android:textColor="#FFFFFF"
             android:layout_marginTop="4dp"/>
 
-        <!-- ==================== KIRMIZI ==================== -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🔴 Güçlü Sarsıntı"
-            android:textColor="#FF4438"
+            android:textColor="#FF3B30"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginTop="28dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Alarm 4 saniye çalar ve otomatik durur — panik yaratmamak için sınırsız çalmaz."
+            android:textColor="#5E7472"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp"/>
 
         <CheckBox
             android:id="@+id/cbRedSound"
@@ -96,7 +102,7 @@
             android:id="@+id/cbRedVib"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Sürekli Titreşim"
+            android:text="Titreşim"
             android:textColor="#FFFFFF"
             android:layout_marginTop="4dp"/>
 
@@ -116,20 +122,21 @@
             android:textColor="#FFFFFF"
             android:layout_marginTop="4dp"/>
 
-        <CheckBox
-            android:id="@+id/cbRedContinuous"
-            android:layout_width="wrap_content"
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Susturulana Kadar Devam Et"
-            android:textColor="#FFFFFF"
-            android:layout_marginTop="4dp"/>
+            android:text="AYARLARI KAYDET"
+            android:backgroundTint="#22E88A"
+            android:textColor="#000000"
+            android:layout_marginTop="28dp"/>
 
         <Button
             android:id="@+id/btnBack"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="GERİ"
-            android:layout_marginTop="28dp"/>
+            android:layout_marginTop="12dp"/>
 
     </LinearLayout>
 </ScrollView>
