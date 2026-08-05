@@ -18,7 +18,6 @@ import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.media.MediaPlayer;
-import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
@@ -27,17 +26,21 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.Vibrator;
+import android.view.WindowManager;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
 /**
- * Sen-Alert'in gerçek çalışma motoru. MainActivity ekranda olsa da olmasa da
- * sensörü dinler, durum makinesini işletir, bildirimleri tetikler.
- * Kısmi wake lock, ekran kapalıyken sensör verisinin toplu (batch) teslim
- * edilmesini önlemeye yardımcı olur - gerçek zamanlı algılama için gerekli,
- * karşılığında bir miktar pil tüketimi artar.
+ * Sen-Alert'in gerçek çalışma motoru.
+ *
+ * UYARI FELSEFESİ (basitleştirildi):
+ * - Sarı ve kırmızı için AYNI bildirim türleri (Ses/Titreşim/Flaş aç-kapa) ve
+ *   AYNI süre kullanılır - sadece eşik (ne zaman tetiklendiği) farklıdır.
+ * - Kademeli/artan şiddet YOK. Sabit süreli tek bir uyarı patlaması olur.
+ * - Durum aynı kalmaya devam ederse (örn. hâlâ kırmızı), REPEAT_INTERVAL_MS
+ *   sonra uyarı bir kez daha tekrarlanır. Sürekli/kesintisiz değildir.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -67,8 +70,8 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long YELLOW_SUSTAIN_MS = 800;
     private static final long RED_SUSTAIN_MS = 500;
     private static final long RELEASE_SUSTAIN_MS = 500;
-    private static final long RED_ALARM_DURATION_MS = 4000;
-    private static final long YELLOW_PULSE_INTERVAL_MS = 3500; // sarıda kalırken tekrar aralığı
+    // Durum devam ederse uyarı bu kadar süre sonra bir kez daha tekrarlanır
+    private static final long REPEAT_INTERVAL_MS = 20000;
 
     private static final float BASE_YELLOW = 0.15f;
     private static final float BASE_RED    = 0.90f;
@@ -81,37 +84,39 @@ public class SensorService extends Service implements SensorEventListener {
     private static final float INSTANT_RED_OVERRIDE = 2.0f;
 
     private final Handler handler = new Handler();
-    private boolean redAlarmActive = false;
-    private boolean redAlarmMuted = false;
-    private boolean yellowPulseActive = false;
+    private boolean alarmActive = false;
+    private boolean alarmMuted = false;
+    private long lastAlarmFiredMs = 0;
 
     private long lastNotifUpdateMs = 0;
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
 
-    private final Runnable redBlinkRunnable = new Runnable() {
+    private final Runnable blinkRunnable = new Runnable() {
         @Override public void run() {
-            if (!redAlarmActive || redAlarmMuted) return;
-            if (prefs.getBoolean("red_flash", true)) toggleTorch(!torchOn);
+            if (!alarmActive || alarmMuted) return;
+            if (prefs.getBoolean("alert_flash", true)) toggleTorch(!torchOn);
             handler.postDelayed(this, 400);
         }
     };
 
-    private final Runnable stopRedAlarmRunnable = new Runnable() {
-        @Override public void run() { stopRedAlarm(); }
+    private final Runnable stopAlarmRunnable = new Runnable() {
+        @Override public void run() { stopAlarm(); }
     };
 
-    private final Runnable yellowPulseRunnable = new Runnable() {
+    // Durum sürdükçe periyodik olarak "hâlâ aynı durumda mıyız" diye kontrol eder
+    private final Runnable repeatCheckRunnable = new Runnable() {
         @Override public void run() {
-            if (currentState != State.YELLOW) { yellowPulseActive = false; return; }
-            triggerYellowFeedback();
-            handler.postDelayed(this, YELLOW_PULSE_INTERVAL_MS);
+            if (currentState == State.YELLOW || currentState == State.RED) {
+                triggerAlarm();
+                handler.postDelayed(this, REPEAT_INTERVAL_MS);
+            }
         }
     };
 
     private final BroadcastReceiver controlReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (Constants.ACTION_MUTE.equals(intent.getAction())) {
-                muteRedAlarm();
+                muteAlarm();
             } else if (Constants.ACTION_RECALIBRATE.equals(intent.getAction())) {
                 firstRead = true;
                 magIndex = 0;
@@ -142,7 +147,10 @@ public class SensorService extends Service implements SensorEventListener {
         registerReceiver(controlReceiver, filter);
 
         updateSensitivity();
-        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+        // DENEME: SENSOR_DELAY_UI yerine SENSOR_DELAY_FASTEST - ekran kapalıyken
+        // bazı cihazlarda toplu (batch) teslimi azaltabilir. Sorun çözülmezse
+        // pil tüketimi gereksiz artmasın diye SENSOR_DELAY_UI'ye geri dönülebilir.
+        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
 
         prefs.edit().putBoolean("service_running", true).apply();
         goCalibrating();
@@ -157,7 +165,7 @@ public class SensorService extends Service implements SensorEventListener {
     public void onDestroy() {
         super.onDestroy();
         sensorManager.unregisterListener(this);
-        stopRedAlarm();
+        stopAlarm();
         handler.removeCallbacksAndMessages(null);
         try { unregisterReceiver(controlReceiver); } catch (Exception ignored) {}
         releaseWakeLock();
@@ -172,7 +180,7 @@ public class SensorService extends Service implements SensorEventListener {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SenAlert::SensorWakeLock");
             wakeLock.setReferenceCounted(false);
-            wakeLock.acquire(); // süresiz - servis çalıştığı sürece tutulur, onDestroy'da bırakılır
+            wakeLock.acquire();
         } catch (Exception ignored) {}
     }
 
@@ -293,105 +301,94 @@ public class SensorService extends Service implements SensorEventListener {
     private void goCalibrating() {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
-        stopRedAlarm();
-        stopYellowPulse();
+        stopAlarm();
+        handler.removeCallbacks(repeatCheckRunnable);
         updateNotification("🟤", "KALİBRASYON YAPILIYOR...", 0);
     }
 
     private void goGreen() {
         if (currentState == State.GREEN) return;
         currentState = State.GREEN;
-        stopRedAlarm();
-        stopYellowPulse();
+        stopAlarm();
+        handler.removeCallbacks(repeatCheckRunnable);
         updateNotification("🟢", "SABİT", 0);
     }
 
     private void goYellow() {
-        if (currentState == State.YELLOW) return;
+        boolean already = (currentState == State.YELLOW);
         currentState = State.YELLOW;
-        stopRedAlarm();
         updateNotification("🟡", "SARSINTI ALGILANDI", 0);
-        startYellowPulse();
+        if (!already) {
+            triggerAlarm();
+            handler.removeCallbacks(repeatCheckRunnable);
+            handler.postDelayed(repeatCheckRunnable, REPEAT_INTERVAL_MS);
+        }
     }
 
     private void goRed() {
-        boolean alreadyRed = (currentState == State.RED);
+        boolean already = (currentState == State.RED);
         currentState = State.RED;
-        stopYellowPulse();
         updateNotification("🔴", "GÜÇLÜ SARSINTI", 0);
-        if (!alreadyRed) {
-            saveLastStrongEvent();
-            startRedAlarm();
+        if (!already) {
+            saveLastAlertEvent();
+            wakeScreenBriefly();
+            triggerAlarm();
+            handler.removeCallbacks(repeatCheckRunnable);
+            handler.postDelayed(repeatCheckRunnable, REPEAT_INTERVAL_MS);
         }
     }
 
     private void goGray() {
         currentState = State.PAUSED_GRAY;
-        stopRedAlarm();
-        stopYellowPulse();
+        stopAlarm();
+        handler.removeCallbacks(repeatCheckRunnable);
         updateNotification("⚪", "İZLEME BEKLEMEDE", 0);
     }
 
-    private void saveLastStrongEvent() {
+    private void saveLastAlertEvent() {
         String time = new SimpleDateFormat("HH:mm · dd.MM.yyyy", Locale.US).format(new Date());
-        prefs.edit().putString("last_strong_time", time).apply();
+        prefs.edit().putString("last_alert_time", time).apply();
     }
 
-    // ================= BİLDİRİMLER (ses/titreşim/flaş) =================
+    // ================= UYARI (tek ortak mantık - sarı/kırmızı aynı) =================
 
-    private void startYellowPulse() {
-        if (yellowPulseActive) return;
-        yellowPulseActive = true;
-        handler.post(yellowPulseRunnable);
-    }
-
-    private void stopYellowPulse() {
-        yellowPulseActive = false;
-        handler.removeCallbacks(yellowPulseRunnable);
-    }
-
-    private void triggerYellowFeedback() {
-        if (prefs.getBoolean("yellow_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
-            vibrator.vibrate(new long[]{0, 200}, -1);
+    private void triggerAlarm() {
+        lastAlarmFiredMs = SystemClock.elapsedRealtime();
+        if (currentState == State.RED) saveLastAlertEvent();
+        else {
+            String time = new SimpleDateFormat("HH:mm · dd.MM.yyyy", Locale.US).format(new Date());
+            prefs.edit().putString("last_alert_time", time).apply();
         }
-        if (prefs.getBoolean("yellow_sound", true)) playOnceSound();
-        if (prefs.getBoolean("yellow_flash", false)) briefFlash();
-    }
 
-    private void startRedAlarm() {
-        redAlarmActive = true;
-        redAlarmMuted = false;
+        alarmActive = true;
+        alarmMuted = false;
 
-        if (prefs.getBoolean("red_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
-            vibrator.vibrate(new long[]{0, 400, 150, 400, 150, 400, 150, 400}, -1);
+        int durationSec = prefs.getInt("alert_duration_sec", 5);
+        long durationMs = durationSec * 1000L;
+
+        if (prefs.getBoolean("alert_vibration", true) && vibrator != null && vibrator.hasVibrator()) {
+            vibrator.vibrate(new long[]{0, 400, 200, 400, 200, 400}, 0); // 0 = tekrar et, süre dolunca cancel edilecek
         }
-        if (prefs.getBoolean("red_sound", true)) startLoopingAlarmSound();
-        if (prefs.getBoolean("red_flash", true)) handler.post(redBlinkRunnable);
+        if (prefs.getBoolean("alert_sound", true)) startLoopingAlarmSound();
+        if (prefs.getBoolean("alert_flash", true)) handler.post(blinkRunnable);
 
-        handler.postDelayed(stopRedAlarmRunnable, RED_ALARM_DURATION_MS);
+        handler.removeCallbacks(stopAlarmRunnable);
+        handler.postDelayed(stopAlarmRunnable, durationMs);
     }
 
-    private void muteRedAlarm() {
-        redAlarmMuted = true;
-        stopRedAlarm();
+    private void muteAlarm() {
+        alarmMuted = true;
+        stopAlarm();
     }
 
-    private void stopRedAlarm() {
-        redAlarmActive = false;
-        redAlarmMuted = false;
-        handler.removeCallbacks(redBlinkRunnable);
-        handler.removeCallbacks(stopRedAlarmRunnable);
+    private void stopAlarm() {
+        alarmActive = false;
+        alarmMuted = false;
+        handler.removeCallbacks(blinkRunnable);
+        handler.removeCallbacks(stopAlarmRunnable);
         if (vibrator != null) vibrator.cancel();
         stopLoopingAlarmSound();
         if (torchOn) toggleTorch(false);
-    }
-
-    private void playOnceSound() {
-        try {
-            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            Ringtone r = RingtoneManager.getRingtone(this, uri);
-            if (r != null) r.play();
-        } catch (Exception ignored) {}
     }
 
     private void startLoopingAlarmSound() {
@@ -413,13 +410,6 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    private void briefFlash() {
-        toggleTorch(true);
-        handler.postDelayed(new Runnable() {
-            @Override public void run() { toggleTorch(false); }
-        }, 250);
-    }
-
     private void toggleTorch(boolean on) {
         if (cameraId == null || cameraManager == null) return;
         try {
@@ -439,7 +429,14 @@ public class SensorService extends Service implements SensorEventListener {
         return null;
     }
 
-    // ================= BİLDİRİM =================
+    /** Kırmızıda ekranı açmayı dener (yalnızca uygulama halihazırda ön planda/arka planda canlıysa çalışır) */
+    private void wakeScreenBriefly() {
+        // Not: Servis bir Activity değil, doğrudan pencere bayrağı ekleyemez.
+        // Gerçek ekran açma MainActivity üzerinden, kullanıcı bildirime dokunduğunda olur.
+        // Burada sadece log/ileride genişletme için yer tutucu.
+    }
+
+    // ================= BİLDİRİM (tek satır) =================
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -455,16 +452,12 @@ public class SensorService extends Service implements SensorEventListener {
             new Intent(this, MainActivity.class),
             Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
 
-        String shortText = dot + " " + text + (score > 0 ? " · " + score + "/100" : "");
-        String explanation = shortText + "\n\n" +
-            "Seviye ölçeği: 🟢 0-29 Düşük · 🟡 30-69 Orta · 🔴 70-100 Yüksek.\n" +
-            "Sayı, güçlü sarsıntı eşiğine ne kadar yakın olunduğunu gösterir.";
+        String content = dot + " " + text + (score > 0 ? " · " + score + "/100" : "");
 
         return new Notification.Builder(this)
             .setChannelId(Constants.CHANNEL_ID)
             .setContentTitle("Sen-Alert")
-            .setContentText(shortText)
-            .setStyle(new Notification.BigTextStyle().bigText(explanation))
+            .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setOngoing(true)
             .setContentIntent(pi)
