@@ -34,11 +34,9 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * ÖNEMLİ DERS (bu turda öğrenildi): SENSOR_DELAY_FASTEST'e geçmek grafiği
- * bozdu ve "elde alındı" (dz) tespitini anlık gürültüye karşı savunmasız
- * bıraktı - alarmları daha başlamadan kesiyordu. SENSOR_DELAY_UI'ye
- * dönüldü; ekran-kapalı güvenilirliği artık AlarmManager watchdog ile
- * sağlanıyor (Sig-Fi Compass'takiyle aynı yöntem).
+ * BU TURDA: "elde alındı" tespiti artık SADECE sarı/kırmızıda değil,
+ * SABİT (yeşil) durumdayken de çalışıyor - hangi durumda olursa olsun
+ * telefon elden alınınca duraklıyor, "Yeniden Kalibre Et" ile devam eder.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -71,11 +69,10 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long REPEAT_INTERVAL_MS = 20000;
 
     private static final float BASE_YELLOW = 0.15f;
-    private static final float BASE_RED    = 0.90f;
+    private static final float BASE_RED    = 1.05f;
     private float thYellow = BASE_YELLOW;
     private float thRed    = BASE_RED;
 
-    // ---- "Elde alındı" tespiti artık süre filtreli (anlık gürültüye karşı) ----
     private static final float HAND_Z_DELTA = 1.0f;
     private static final long HAND_SUSTAIN_MS = 200;
     private long handPendingSinceMs = 0;
@@ -85,11 +82,9 @@ public class SensorService extends Service implements SensorEventListener {
     private int magIndex = 0;
     private static final float INSTANT_RED_OVERRIDE = 2.0f;
 
-    // ---- Grafik sensör hızından bağımsız, sabit aralıkla beslenir ----
     private static final long GRAPH_PUSH_INTERVAL_MS = 60;
     private long lastGraphPushMs = 0;
 
-    // ---- Watchdog için heartbeat (canlılık kaydı) ----
     private static final long HEARTBEAT_INTERVAL_MS = 60000;
     private long lastHeartbeatMs = 0;
 
@@ -99,6 +94,7 @@ public class SensorService extends Service implements SensorEventListener {
 
     private long lastNotifUpdateMs = 0;
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
+    private int pendingScoreForNotif = 0;
 
     private final Runnable blinkRunnable = new Runnable() {
         @Override public void run() {
@@ -162,7 +158,6 @@ public class SensorService extends Service implements SensorEventListener {
             .putLong("last_heartbeat", System.currentTimeMillis())
             .apply();
 
-        // Sig-Fi'deki gibi: watchdog döngüsünü başlat
         WatchdogReceiver.scheduleNext(this);
 
         goCalibrating();
@@ -240,7 +235,6 @@ public class SensorService extends Service implements SensorEventListener {
 
         long now = SystemClock.elapsedRealtime();
 
-        // Heartbeat - watchdog için canlılık kaydı
         if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
             lastHeartbeatMs = now;
             prefs.edit().putLong("last_heartbeat", System.currentTimeMillis()).apply();
@@ -250,30 +244,31 @@ public class SensorService extends Service implements SensorEventListener {
 
         float frac = computeFrac(dXY);
         int score = Math.round(frac * 100);
+        pendingScoreForNotif = score;
 
         broadcastState(score, x, y, z, dXY, dz);
-        maybeUpdateNotification(score);
 
         if (currentState == State.CALIBRATING) {
             if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN);
+            maybeUpdateNotification();
             return;
         }
 
-        // ---- Elde alındı tespiti - artık 200ms sürdürülmesi gerekiyor ----
-        if (currentState != State.GREEN) {
-            if (dz >= HAND_Z_DELTA) {
-                if (handPendingSinceMs == 0) handPendingSinceMs = now;
-                if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
-                    goGray();
-                    return;
-                }
-            } else {
-                handPendingSinceMs = 0;
+        // ---- Elde alındı tespiti - ARTIK HER DURUMDA (SABİT dahil) çalışır ----
+        if (dz >= HAND_Z_DELTA) {
+            if (handPendingSinceMs == 0) handPendingSinceMs = now;
+            if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
+                goGray();
+                maybeUpdateNotification();
+                return;
             }
+        } else {
+            handPendingSinceMs = 0;
         }
 
         if (dMag >= INSTANT_RED_OVERRIDE) {
             commitState(State.RED);
+            maybeUpdateNotification();
             return;
         }
 
@@ -281,11 +276,13 @@ public class SensorService extends Service implements SensorEventListener {
 
         if (candidate == currentState) {
             pendingState = null;
+            maybeUpdateNotification();
             return;
         }
         if (pendingState != candidate) {
             pendingState = candidate;
             pendingSinceMs = now;
+            maybeUpdateNotification();
             return;
         }
         long requiredHold;
@@ -296,6 +293,7 @@ public class SensorService extends Service implements SensorEventListener {
         if (now - pendingSinceMs >= requiredHold) {
             commitState(candidate);
         }
+        maybeUpdateNotification();
     }
 
     private void commitState(State s) {
@@ -310,12 +308,12 @@ public class SensorService extends Service implements SensorEventListener {
 
     private float computeFrac(float dXY) {
         if (dXY <= thYellow) {
-            return (dXY / thYellow) * 0.35f;
+            return (dXY / thYellow) * 0.30f;
         } else if (dXY <= thRed) {
-            return 0.35f + (dXY - thYellow) / (thRed - thYellow) * 0.37f;
+            return 0.30f + (dXY - thYellow) / (thRed - thYellow) * 0.40f;
         } else {
             float over = Math.min((dXY - thRed) / thRed, 1f);
-            return 0.72f + over * 0.28f;
+            return 0.70f + over * 0.30f;
         }
     }
 
@@ -419,8 +417,12 @@ public class SensorService extends Service implements SensorEventListener {
             alarmPlayer = new MediaPlayer();
             alarmPlayer.setDataSource(this, uri);
             alarmPlayer.setLooping(true);
-            alarmPlayer.prepare();
-            alarmPlayer.start();
+            alarmPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                @Override public void onPrepared(MediaPlayer mp) {
+                    if (alarmActive && !alarmMuted) mp.start();
+                }
+            });
+            alarmPlayer.prepareAsync();
         } catch (Exception ignored) {}
     }
 
@@ -482,13 +484,13 @@ public class SensorService extends Service implements SensorEventListener {
         notifManager.notify(NOTIF_ID, buildNotification(dot, text, score));
     }
 
-    private void maybeUpdateNotification(int score) {
+    private void maybeUpdateNotification() {
         long now = SystemClock.elapsedRealtime();
         if (now - lastNotifUpdateMs < NOTIF_UPDATE_INTERVAL_MS) return;
         lastNotifUpdateMs = now;
         if (currentState == State.CALIBRATING || currentState == State.PAUSED_GRAY) return;
         String dot = currentState == State.RED ? "🔴" : currentState == State.YELLOW ? "🟡" : "🟢";
-        updateNotification(dot, stateLabel(), score);
+        updateNotification(dot, stateLabel(), pendingScoreForNotif);
     }
 
     private String stateLabel() {
@@ -502,7 +504,6 @@ public class SensorService extends Service implements SensorEventListener {
 
     private void broadcastState(int score, float x, float y, float z, float dXY, float dZ) {
         long now = SystemClock.elapsedRealtime();
-        // Grafik sensör hızından bağımsız, sabit aralıkla beslenir
         if (now - lastGraphPushMs < GRAPH_PUSH_INTERVAL_MS) return;
         lastGraphPushMs = now;
 
