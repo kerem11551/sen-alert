@@ -10,13 +10,16 @@ import android.widget.TextView;
 
 public class SettingsActivity extends Activity {
 
-    // MainActivity.java bu sabiti "SettingsActivity.PREFS" olarak kullanıyor
     public static final String PREFS = "SenAlertPrefs";
 
     private SharedPreferences prefs;
     private SeekBar seekSensitivity;
     private TextView tvSensitivityValue;
-    private CheckBox cbYellowVib, cbOrangeVib, cbRedVib;
+
+    // Sarı
+    private CheckBox cbYellowSound, cbYellowVib, cbYellowFlash;
+    // Kırmızı
+    private CheckBox cbRedSound, cbRedVib, cbRedFlash, cbRedWake, cbRedContinuous;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,13 +30,20 @@ public class SettingsActivity extends Activity {
 
         seekSensitivity    = findViewById(R.id.seekSensitivity);
         tvSensitivityValue = findViewById(R.id.tvSensitivityValue);
-        cbYellowVib         = findViewById(R.id.cbYellowVib);
-        cbOrangeVib          = findViewById(R.id.cbOrangeVib);
-        cbRedVib             = findViewById(R.id.cbRedVib);
 
-        // ---- Hassasiyet: 1-20 arası (MainActivity.updateSensitivity ile aynı ölçek) ----
-        int savedSensitivity = prefs.getInt("sensitivity", 10);
-        seekSensitivity.setMax(19); // 0..19 -> gösterimde +1
+        cbYellowSound = findViewById(R.id.cbYellowSound);
+        cbYellowVib   = findViewById(R.id.cbYellowVib);
+        cbYellowFlash = findViewById(R.id.cbYellowFlash);
+
+        cbRedSound      = findViewById(R.id.cbRedSound);
+        cbRedVib        = findViewById(R.id.cbRedVib);
+        cbRedFlash      = findViewById(R.id.cbRedFlash);
+        cbRedWake       = findViewById(R.id.cbRedWake);
+        cbRedContinuous = findViewById(R.id.cbRedContinuous);
+
+        // ---- Hassasiyet: 1-10 ----
+        int savedSensitivity = prefs.getInt("sensitivity", 5);
+        seekSensitivity.setMax(9); // 0..9 -> gösterimde +1
         seekSensitivity.setProgress(savedSensitivity - 1);
         tvSensitivityValue.setText(String.valueOf(savedSensitivity));
 
@@ -48,21 +58,24 @@ public class SettingsActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // ---- Renk bazlı titreşim tercihleri (MainActivity.triggerFeedback bunları okuyor) ----
-        cbYellowVib.setChecked(prefs.getBoolean("yellow_vibration", true));
-        cbOrangeVib.setChecked(prefs.getBoolean("orange_vibration", true));
-        cbRedVib.setChecked(prefs.getBoolean("red_vibration", true));
+        bindCheckbox(cbYellowSound, "yellow_sound", true);
+        bindCheckbox(cbYellowVib,   "yellow_vibration", true);
+        bindCheckbox(cbYellowFlash, "yellow_flash", false);
 
-        cbYellowVib.setOnCheckedChangeListener((btn, checked) ->
-            prefs.edit().putBoolean("yellow_vibration", checked).apply());
-        cbOrangeVib.setOnCheckedChangeListener((btn, checked) ->
-            prefs.edit().putBoolean("orange_vibration", checked).apply());
-        cbRedVib.setOnCheckedChangeListener((btn, checked) ->
-            prefs.edit().putBoolean("red_vibration", checked).apply());
+        bindCheckbox(cbRedSound,      "red_sound", true);
+        bindCheckbox(cbRedVib,        "red_vibration", true);
+        bindCheckbox(cbRedFlash,      "red_flash", true);
+        bindCheckbox(cbRedWake,       "red_wake_screen", true);
+        bindCheckbox(cbRedContinuous, "red_continuous", true);
 
         findViewById(R.id.btnBack).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { finish(); }
+            @Override public void onClick(View v) { finish(); }
         });
+    }
+
+    private void bindCheckbox(CheckBox cb, final String key, boolean defaultValue) {
+        cb.setChecked(prefs.getBoolean(key, defaultValue));
+        cb.setOnCheckedChangeListener((btn, checked) ->
+            prefs.edit().putBoolean(key, checked).apply());
     }
 }
