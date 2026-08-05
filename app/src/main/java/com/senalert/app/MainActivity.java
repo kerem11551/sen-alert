@@ -55,7 +55,10 @@ public class MainActivity extends Activity {
             float dXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
             float dZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
 
-            ekgView.pushSample(score / 100f);
+            // Duraklamışken grafik akmasın - elin titremesi "sarsıntı" gibi görünmesin
+            if (!"PAUSED_GRAY".equals(state)) {
+                ekgView.pushSample(score / 100f);
+            }
 
             lastBroadcastText.setText("Son Broadcast: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
 
