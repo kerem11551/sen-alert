@@ -38,6 +38,10 @@
                 android:value="Sarsıntı algılama ve anlık uyarı" />
         </service>
 
+        <receiver
+            android:name=".WatchdogReceiver"
+            android:exported="false"/>
+
     </application>
 
 </manifest>
