@@ -55,11 +55,8 @@ public class MainActivity extends Activity {
             float dXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
             float dZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
 
-            // Grafik her örnekte akar
             ekgView.pushSample(score / 100f);
 
-            // TEŞHİS: bu satır donarsa broadcast alınmıyor demektir (sensör/servis sorunu).
-            // Akıyor ama grafik donuyorsa, sorun özel olarak EkgGraphView çiziminde demektir.
             lastBroadcastText.setText("Son Broadcast: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
 
             sensorText.setText(String.format(
@@ -151,6 +148,7 @@ public class MainActivity extends Activity {
         boolean running = prefs.getBoolean("service_running", false);
         if (running) {
             stopService(new Intent(this, SensorService.class));
+            WatchdogReceiver.cancel(this); // kasıtlı durdurmada bekçi de iptal edilir
             lastAppliedState = null;
             orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
             stateText.setText("İZLEME DURDU");
