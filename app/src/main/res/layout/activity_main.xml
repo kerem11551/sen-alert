@@ -78,9 +78,10 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="20dp"
             android:text="ANLIK SARSINTI SEVİYESİ"
-            android:textColor="#5E7472"
-            android:textSize="11sp"
-            android:letterSpacing="0.08"/>
+            android:textColor="#DCE7E5"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.06"/>
 
         <com.senalert.app.EkgGraphView
             android:id="@+id/ekgView"
@@ -95,7 +96,7 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="6dp"
             android:text="Son 6 Saniye"
-            android:textColor="#5E7472"
+            android:textColor="#8A9C9A"
             android:textSize="12sp"/>
 
         <TextView
@@ -106,7 +107,7 @@
             android:layout_marginTop="18dp"
             android:padding="8dp"
             android:text="ℹ️ Teknik Bilgi"
-            android:textColor="#5E7472"
+            android:textColor="#8A9C9A"
             android:textSize="12sp"/>
 
         <LinearLayout
@@ -125,7 +126,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
                 android:text="X: 0.00  Y: 0.00  Z: 0.00\nΔXY: 0.00  ΔZ: 0.00"
-                android:textColor="#5E7472"
+                android:textColor="#DCE7E5"
                 android:textSize="12sp"
                 android:fontFamily="monospace"
                 android:gravity="center"/>
@@ -148,7 +149,7 @@
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="6dp"
                 android:text="Seviye ölçeği: 🟢 0-29 Düşük · 🟡 30-69 Orta · 🔴 70-100 Yüksek"
-                android:textColor="#5E7472"
+                android:textColor="#8A9C9A"
                 android:textSize="10sp"
                 android:gravity="center"/>
         </LinearLayout>
@@ -160,6 +161,8 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="16dp"
             android:text="YENİDEN KALİBRE ET"
+            android:backgroundTint="#0F1517"
+            android:textColor="#FFFFFF"
             android:visibility="gone"/>
 
         <Button
@@ -167,7 +170,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="AYARLAR"/>
+            android:text="AYARLAR"
+            android:backgroundTint="#0F1517"
+            android:textColor="#FFFFFF"/>
 
     </LinearLayout>
 </ScrollView>
