@@ -11,12 +11,21 @@
         android:orientation="vertical"
         android:padding="20dp">
 
+        <Button
+            android:id="@+id/btnToggle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="BAŞLAT"
+            android:backgroundTint="#22E88A"
+            android:textColor="#000000"
+            android:textStyle="bold"/>
+
         <com.senalert.app.ShakeOrbView
             android:id="@+id/orbView"
             android:layout_width="220dp"
             android:layout_height="150dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"/>
+            android:layout_marginTop="16dp"/>
 
         <TextView
             android:id="@+id/stateText"
@@ -24,8 +33,8 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="10dp"
-            android:text="SABİT"
-            android:textColor="#22E88A"
+            android:text="İZLEME DURDU"
+            android:textColor="#8A9C9A"
             android:textSize="24sp"
             android:textStyle="bold"/>
 
@@ -66,7 +75,7 @@
         <com.senalert.app.EkgGraphView
             android:id="@+id/ekgView"
             android:layout_width="match_parent"
-            android:layout_height="170dp"
+            android:layout_height="180dp"
             android:layout_marginTop="20dp"
             android:background="#0a1112"/>
 
