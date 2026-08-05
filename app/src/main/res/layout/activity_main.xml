@@ -39,14 +39,14 @@
             android:textStyle="bold"/>
 
         <TextView
-            android:id="@+id/lastStrongText"
+            android:id="@+id/lastAlertText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="6dp"
-            android:text="Son Güçlü Sarsıntı: —"
+            android:text="Son Uyarı: —"
             android:textColor="#5E7472"
-            android:textSize="11sp"
+            android:textSize="12sp"
             android:fontFamily="monospace"/>
 
         <TextView
@@ -119,6 +119,28 @@
                 android:textSize="12sp"
                 android:fontFamily="monospace"
                 android:gravity="center"/>
+
+            <TextView
+                android:id="@+id/lastBroadcastText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp"
+                android:text="Son Broadcast: —"
+                android:textColor="#22E88A"
+                android:textSize="11sp"
+                android:fontFamily="monospace"
+                android:gravity="center"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="6dp"
+                android:text="Seviye ölçeği: 🟢 0-29 Düşük · 🟡 30-69 Orta · 🔴 70-100 Yüksek"
+                android:textColor="#5E7472"
+                android:textSize="10sp"
+                android:gravity="center"/>
         </LinearLayout>
 
         <Button
@@ -130,27 +152,12 @@
             android:text="YENİDEN KALİBRE ET"
             android:visibility="gone"/>
 
-        <LinearLayout
+        <Button
+            android:id="@+id/btnSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="20dp">
-
-            <Button
-                android:id="@+id/btnCapture"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="OLAYI KAYDET"/>
-
-            <Button
-                android:id="@+id/btnSettings"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="AYARLAR"/>
-
-        </LinearLayout>
+            android:layout_marginTop="20dp"
+            android:text="AYARLAR"/>
 
     </LinearLayout>
 </ScrollView>
