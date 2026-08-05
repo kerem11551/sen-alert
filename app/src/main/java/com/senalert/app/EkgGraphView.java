@@ -10,8 +10,9 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * EKG tarzı akan sarsıntı grafiği - 3 kademeli tasarım (yeşil/sarı/kırmızı).
- * pushSample(0..1) ile beslenir.
+ * EKG tarzı akan sarsıntı grafiği - 3 çizgi de (yeşil/sarı/kırmızı) gösterilir.
+ * ÖNEMLİ: tüm boyutlar ekran yoğunluğuna (density) göre ölçekleniyor,
+ * aksi halde yüksek yoğunluklu ekranlarda metin/çizgiler çok küçük kalır.
  */
 public class EkgGraphView extends View {
 
@@ -20,32 +21,46 @@ public class EkgGraphView extends View {
     private int sampleCount = 0;
     private int writeIndex = 0;
 
+    private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint thresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path wavePath = new Path();
 
-    // 3 kademeli sınır çizgileri
-    private static final float LINE_YELLOW = 0.40f;
-    private static final float LINE_RED    = 0.75f;
+    private static final float LINE_GREEN  = 0.08f;
+    private static final float LINE_YELLOW = 0.35f;
+    private static final float LINE_RED    = 0.72f;
 
     public EkgGraphView(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        linePaint.setColor(Color.parseColor("#F4FBFA"));
+        float density = getResources().getDisplayMetrics().density;
+        float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
+
+        glowPaint.setColor(Color.parseColor("#F4FBFA"));
+        glowPaint.setStyle(Paint.Style.STROKE);
+        glowPaint.setStrokeWidth(11f * density);
+        glowPaint.setStrokeJoin(Paint.Join.ROUND);
+        glowPaint.setStrokeCap(Paint.Cap.ROUND);
+        glowPaint.setAlpha(70);
+        glowPaint.setShadowLayer(18f * density, 0, 0, Color.parseColor("#FFFFFF"));
+
+        linePaint.setColor(Color.parseColor("#FFFFFF"));
         linePaint.setStyle(Paint.Style.STROKE);
-        linePaint.setStrokeWidth(4f);
+        linePaint.setStrokeWidth(4.5f * density);
         linePaint.setStrokeJoin(Paint.Join.ROUND);
-        linePaint.setShadowLayer(8f, 0, 0, Color.parseColor("#F4FBFA"));
+        linePaint.setStrokeCap(Paint.Cap.ROUND);
+        linePaint.setShadowLayer(10f * density, 0, 0, Color.parseColor("#FFFFFF"));
         setLayerType(LAYER_TYPE_SOFTWARE, null);
 
         thresholdPaint.setStyle(Paint.Style.STROKE);
-        thresholdPaint.setStrokeWidth(2f);
-        thresholdPaint.setPathEffect(new DashPathEffect(new float[]{10f, 8f}, 0));
-        thresholdPaint.setAlpha(140);
+        thresholdPaint.setStrokeWidth(2.2f * density);
+        thresholdPaint.setPathEffect(new DashPathEffect(new float[]{10f * density, 8f * density}, 0));
+        thresholdPaint.setAlpha(190);
 
-        labelPaint.setTextSize(20f);
+        labelPaint.setTextSize(18f * scaledDensity); // ~18sp
         labelPaint.setAntiAlias(true);
+        labelPaint.setFakeBoldText(true);
     }
 
     public void pushSample(float frac) {
@@ -61,12 +76,13 @@ public class EkgGraphView extends View {
         super.onDraw(canvas);
         float w = getWidth();
         float h = getHeight();
-        float topMargin = h * 0.08f;
-        float bottomMargin = h * 0.08f;
+        float topMargin = h * 0.14f;
+        float bottomMargin = h * 0.10f;
         float usableH = h - topMargin - bottomMargin;
 
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#F5C518", "SARSINTI");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED, "#FF4438", "GÜÇLÜ");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED,    "#FF3B30", "GÜÇLÜ");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#FFD60A", "SARSINTI");
+        drawThresholdLine(canvas, w, topMargin, usableH, LINE_GREEN,  "#22E88A", "SABİT");
 
         if (sampleCount < 2) return;
 
@@ -81,6 +97,7 @@ public class EkgGraphView extends View {
             if (i == 0) wavePath.moveTo(x, y);
             else wavePath.lineTo(x, y);
         }
+        canvas.drawPath(wavePath, glowPaint);
         canvas.drawPath(wavePath, linePaint);
     }
 
@@ -90,6 +107,7 @@ public class EkgGraphView extends View {
         thresholdPaint.setColor(Color.parseColor(colorHex));
         canvas.drawLine(0, y, w, y, thresholdPaint);
         labelPaint.setColor(Color.parseColor(colorHex));
-        canvas.drawText(label, w - labelPaint.measureText(label) - 8f, y - 6f, labelPaint);
+        labelPaint.setShadowLayer(6f, 0, 0, Color.parseColor(colorHex));
+        canvas.drawText(label, w - labelPaint.measureText(label) - 10f, y - 10f, labelPaint);
     }
 }
