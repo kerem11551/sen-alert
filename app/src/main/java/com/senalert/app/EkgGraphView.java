@@ -6,11 +6,14 @@ import android.graphics.Color;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * EKG tarzı akan sarsıntı grafiği - 3 çizgi (yeşil/sarı/kırmızı), emoji kareli etiketler.
+ * EKG tarzı akan sarsıntı grafiği.
+ * Her eşik: solda parlayan nokta + kesikli çizgi + eş genişlikte renkli rozet.
+ * Açıklama cümlesi yok - sadece durum adı. Beyaz dalga bunların üzerinden akar.
  */
 public class EkgGraphView extends View {
 
@@ -20,18 +23,28 @@ public class EkgGraphView extends View {
     private int writeIndex = 0;
 
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint thresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint dashPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint badgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint badgeTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path wavePath = new Path();
+    private final RectF badgeRect = new RectF();
 
     private static final float LINE_GREEN  = 0.06f;
     private static final float LINE_YELLOW = 0.30f;
     private static final float LINE_RED    = 0.80f;
 
+    private static final String LABEL_RED    = "GÜÇLÜ";
+    private static final String LABEL_YELLOW = "SARSINTI";
+    private static final String LABEL_GREEN  = "NORMAL";
+
+    private final float density;
+    private float badgeWidth = 0f; // üçü de aynı genişlikte - en uzun etikete göre hesaplanır
+    private float badgeHeight;
+
     public EkgGraphView(Context context, AttributeSet attrs) {
         super(context, attrs);
-
-        float density = getResources().getDisplayMetrics().density;
+        density = getResources().getDisplayMetrics().density;
         float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
 
         linePaint.setColor(Color.parseColor("#FFFFFF"));
@@ -42,14 +55,21 @@ public class EkgGraphView extends View {
         linePaint.setShadowLayer(4f * density, 0, 0, Color.parseColor("#F4FBFA"));
         setLayerType(LAYER_TYPE_SOFTWARE, null);
 
-        thresholdPaint.setStyle(Paint.Style.STROKE);
-        thresholdPaint.setStrokeWidth(2f * density);
-        thresholdPaint.setPathEffect(new DashPathEffect(new float[]{10f * density, 8f * density}, 0));
-        thresholdPaint.setAlpha(190);
+        dashPaint.setStyle(Paint.Style.STROKE);
+        dashPaint.setStrokeWidth(2f * density);
+        dashPaint.setPathEffect(new DashPathEffect(new float[]{8f * density, 7f * density}, 0));
+        dashPaint.setAlpha(200);
 
-        labelPaint.setTextSize(18f * scaledDensity);
-        labelPaint.setAntiAlias(true);
-        labelPaint.setFakeBoldText(true);
+        dotPaint.setStyle(Paint.Style.FILL);
+
+        badgePaint.setStyle(Paint.Style.FILL);
+
+        badgeTextPaint.setTextSize(13f * scaledDensity);
+        badgeTextPaint.setAntiAlias(true);
+        badgeTextPaint.setFakeBoldText(true);
+        badgeTextPaint.setTextAlign(Paint.Align.CENTER);
+
+        badgeHeight = 26f * density;
     }
 
     public void pushSample(float frac) {
@@ -69,9 +89,15 @@ public class EkgGraphView extends View {
         float bottomMargin = h * 0.10f;
         float usableH = h - topMargin - bottomMargin;
 
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_RED,    "#FF3B30", "🟥 GÜÇLÜ");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_YELLOW, "#FFD60A", "🟨 SARSINTI");
-        drawThresholdLine(canvas, w, topMargin, usableH, LINE_GREEN,  "#22E88A", "🟩 NORMAL");
+        if (badgeWidth == 0f) {
+            float maxTextW = Math.max(badgeTextPaint.measureText(LABEL_YELLOW),
+                Math.max(badgeTextPaint.measureText(LABEL_RED), badgeTextPaint.measureText(LABEL_GREEN)));
+            badgeWidth = maxTextW + 24f * density;
+        }
+
+        drawThresholdRow(canvas, w, topMargin + usableH * (1f - LINE_RED),    "#FF3B30", LABEL_RED,    Color.WHITE);
+        drawThresholdRow(canvas, w, topMargin + usableH * (1f - LINE_YELLOW), "#FFD60A", LABEL_YELLOW, Color.BLACK);
+        drawThresholdRow(canvas, w, topMargin + usableH * (1f - LINE_GREEN),  "#22E88A", LABEL_GREEN,  Color.BLACK);
 
         if (sampleCount < 2) return;
 
@@ -89,13 +115,29 @@ public class EkgGraphView extends View {
         canvas.drawPath(wavePath, linePaint);
     }
 
-    private void drawThresholdLine(Canvas canvas, float w, float topMargin, float usableH,
-                                    float frac, String colorHex, String label) {
-        float y = topMargin + usableH * (1f - frac);
-        thresholdPaint.setColor(Color.parseColor(colorHex));
-        canvas.drawLine(0, y, w, y, thresholdPaint);
-        labelPaint.setColor(Color.parseColor(colorHex));
-        labelPaint.setShadowLayer(5f, 0, 0, Color.parseColor(colorHex));
-        canvas.drawText(label, w - labelPaint.measureText(label) - 10f, y - 10f, labelPaint);
+    private void drawThresholdRow(Canvas canvas, float w, float y, String colorHex, String label, int textColor) {
+        int color = Color.parseColor(colorHex);
+
+        float dotRadius = 6.5f * density;
+        float dotX = 14f * density + dotRadius;
+
+        dotPaint.setColor(color);
+        dotPaint.setShadowLayer(9f * density, 0, 0, color);
+        canvas.drawCircle(dotX, y, dotRadius, dotPaint);
+
+        float badgeRight = w - 12f * density;
+        float badgeLeft = badgeRight - badgeWidth;
+        badgeRect.set(badgeLeft, y - badgeHeight / 2f, badgeRight, y + badgeHeight / 2f);
+        badgePaint.setColor(color);
+        canvas.drawRoundRect(badgeRect, badgeHeight / 2f, badgeHeight / 2f, badgePaint);
+
+        float lineStart = dotX + dotRadius + 8f * density;
+        float lineEnd = badgeLeft - 8f * density;
+        dashPaint.setColor(color);
+        canvas.drawLine(lineStart, y, lineEnd, y, dashPaint);
+
+        badgeTextPaint.setColor(textColor);
+        float textY = y - (badgeTextPaint.descent() + badgeTextPaint.ascent()) / 2f;
+        canvas.drawText(label, badgeLeft + badgeWidth / 2f, textY, badgeTextPaint);
     }
 }
