@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
     private TextView lastBroadcastText;
     private View detailsPanel;
     private Button btnRecalibrate;
-    private Button btnMute;
+    private TextView btnMute; // artık küçük ikincil metin - Button değil
     private Button btnToggle;
     private ShakeOrbView orbView;
     private EkgGraphView ekgView;
@@ -140,7 +140,7 @@ public class MainActivity extends Activity {
         btnMute.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 sendControl(Constants.ACTION_MUTE);
-                btnMute.setVisibility(View.GONE);
+                btnMute.setVisibility(View.INVISIBLE);
             }
         });
 
@@ -184,7 +184,7 @@ public class MainActivity extends Activity {
         registerReceiver(stateReceiver, new IntentFilter(Constants.ACTION_STATE));
         updateLastAlertText();
         refreshToggleButtonFromState();
-        refreshSetupStatus(); // kullanıcı ayarlardan dönmüş olabilir, tazele
+        refreshSetupStatus();
     }
 
     @Override
@@ -242,7 +242,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Üretici-özel otomatik başlatma ayar ekranı - resmi bir Android API'si yok, en iyi çaba (best-effort) */
     private void openAutostartSettings() {
         String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
         Intent intent = new Intent();
@@ -268,7 +267,7 @@ public class MainActivity extends Activity {
             }
             startActivity(intent);
         } catch (Exception e) {
-            openAppSettings(); // bilinmeyen/değişmiş cihaz - genel uygulama ayarlarına düş
+            openAppSettings();
         }
     }
 
@@ -293,7 +292,7 @@ public class MainActivity extends Activity {
             stateText.setText("İZLEME DURDU");
             stateText.setTextColor(COLOR_GRAY);
             alertBar.setVisibility(View.GONE);
-            btnMute.setVisibility(View.GONE);
+            btnMute.setVisibility(View.INVISIBLE);
             btnRecalibrate.setVisibility(View.GONE);
             btnToggle.setText("BAŞLAT");
         } else {
@@ -346,7 +345,7 @@ public class MainActivity extends Activity {
                 stateText.setText("KALİBRASYON");
                 stateText.setTextColor(COLOR_GRAY);
                 btnRecalibrate.setVisibility(View.GONE);
-                btnMute.setVisibility(View.GONE);
+                btnMute.setVisibility(View.INVISIBLE);
                 break;
             case "GREEN":
                 orbView.setState(COLOR_GREEN, ShakeOrbView.LEVEL_GREEN);
@@ -354,7 +353,7 @@ public class MainActivity extends Activity {
                 stateText.setText("NORMAL");
                 stateText.setTextColor(COLOR_GREEN);
                 btnRecalibrate.setVisibility(View.GONE);
-                btnMute.setVisibility(View.GONE);
+                btnMute.setVisibility(View.INVISIBLE);
                 break;
             case "YELLOW":
                 orbView.setState(COLOR_YELLOW, ShakeOrbView.LEVEL_YELLOW);
@@ -382,7 +381,7 @@ public class MainActivity extends Activity {
                 stateText.setText("İZLEME BEKLEMEDE");
                 stateText.setTextColor(COLOR_GRAY);
                 btnRecalibrate.setVisibility(View.VISIBLE);
-                btnMute.setVisibility(View.GONE);
+                btnMute.setVisibility(View.INVISIBLE);
                 break;
         }
     }
