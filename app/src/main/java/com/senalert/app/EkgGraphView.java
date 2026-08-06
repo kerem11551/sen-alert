@@ -12,8 +12,9 @@ import android.view.View;
 
 /**
  * EKG tarzı akan sarsıntı grafiği.
- * Her eşik: solda parlayan nokta + kesikli çizgi + eş genişlikte renkli rozet.
- * Açıklama cümlesi yok - sadece durum adı. Beyaz dalga bunların üzerinden akar.
+ * Her eşik: solda SADE (parlamasız) referans noktası + kesikli çizgi + eş
+ * genişlikte renkli rozet. Dikkat beyaz dalgada kalsın diye noktalar artık
+ * ışık saçmıyor, sadece sabit bir renk işareti.
  */
 public class EkgGraphView extends View {
 
@@ -39,7 +40,7 @@ public class EkgGraphView extends View {
     private static final String LABEL_GREEN  = "NORMAL";
 
     private final float density;
-    private float badgeWidth = 0f; // üçü de aynı genişlikte - en uzun etikete göre hesaplanır
+    private float badgeWidth = 0f;
     private float badgeHeight;
 
     public EkgGraphView(Context context, AttributeSet attrs) {
@@ -60,6 +61,7 @@ public class EkgGraphView extends View {
         dashPaint.setPathEffect(new DashPathEffect(new float[]{8f * density, 7f * density}, 0));
         dashPaint.setAlpha(200);
 
+        // Sade, parlamasız referans noktası - dikkat beyaz dalgada kalsın
         dotPaint.setStyle(Paint.Style.FILL);
 
         badgePaint.setStyle(Paint.Style.FILL);
@@ -118,11 +120,12 @@ public class EkgGraphView extends View {
     private void drawThresholdRow(Canvas canvas, float w, float y, String colorHex, String label, int textColor) {
         int color = Color.parseColor(colorHex);
 
-        float dotRadius = 6.5f * density;
+        float dotRadius = 5.5f * density;
         float dotX = 14f * density + dotRadius;
 
+        // Parlamasız, sade dolgu - sadece renk referansı
         dotPaint.setColor(color);
-        dotPaint.setShadowLayer(9f * density, 0, 0, color);
+        dotPaint.setAlpha(230);
         canvas.drawCircle(dotX, y, dotRadius, dotPaint);
 
         float badgeRight = w - 12f * density;
