@@ -151,7 +151,6 @@
             android:textStyle="bold"
             android:background="#808080"/>
 
-        <!-- KÜÇÜK, İKİNCİL SUSTUR - layout'u kaydırmasın diye INVISIBLE (GONE değil) -->
         <TextView
             android:id="@+id/btnMute"
             android:layout_width="wrap_content"
@@ -229,7 +228,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="8dp"
-                android:text="Son Broadcast: —"
+                android:text="Son Veri Güncellemesi: —"
                 android:textColor="#22E88A"
                 android:textSize="11sp"
                 android:fontFamily="monospace"
@@ -255,7 +254,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Sen-Alert, telefon veya tabletin bulunduğu noktadaki sarsıntıyı internet bağlantısı gerektirmeden, cihazın dahili hareket sensörlerini kullanarak sürekli izler. Amacı panik oluşturmak değil, olası bir sarsıntı durumunda kullanıcıya mümkün olan en kısa sürede farkındalık kazandırmaktır.\n\nSarsıntı seviyeleri (Yeşil / Sarı / Kırmızı), cihazın dahili hareket sensörlerinden alınan verilerin analizine göre belirlenir. Eşik değerleri gerçek kullanım testleriyle optimize edilmiştir.\n\nBu uygulama bir deprem büyüklüğü veya deprem şiddeti ölçüm cihazı değildir. Ölçülen değerler; cihazın modeli, sensör özellikleri, bulunduğu yüzey ve konum gibi etkenlere bağlı olarak değişebilir. Sen-Alert, yalnızca cihazın bulunduğu noktadaki sarsıntıyı algılayarak kullanıcıyı mümkün olan en kısa sürede ses, titreşim ve ışık bildirimleriyle uyarmayı amaçlar."
+                android:text="Sen-Alert, cihazın bulunduğu noktadaki sarsıntıyı internet bağlantısı gerektirmeden, dahili hareket sensörlerini kullanarak sürekli izler. Amacı panik oluşturmak değil, olası bir sarsıntı durumunda kullanıcıya mümkün olan en kısa sürede farkındalık kazandırmaktır.\n\nSarsıntı seviyeleri (Yeşil / Sarı / Kırmızı), cihazın dahili hareket sensörlerinden alınan verilerin analizine göre belirlenir. Eşik değerleri gerçek kullanım testleriyle optimize edilmiştir.\n\nBu uygulama bir deprem büyüklüğü veya deprem şiddeti ölçüm cihazı değildir. Ölçülen değerler; cihazın modeli, sensör özellikleri, bulunduğu yüzey ve konum gibi etkenlere bağlı olarak değişebilir. Sen-Alert, yalnızca cihazın bulunduğu noktadaki sarsıntıyı algılayarak kullanıcıyı mümkün olan en kısa sürede ses, titreşim ve ışık bildirimleriyle uyarmayı amaçlar."
                 android:textColor="#8A9C9A"
                 android:textSize="11sp"
                 android:lineSpacingExtra="3dp"/>
