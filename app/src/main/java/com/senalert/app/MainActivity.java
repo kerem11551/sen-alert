@@ -3,14 +3,20 @@ package com.senalert.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -35,7 +41,17 @@ public class MainActivity extends Activity {
     private ShakeOrbView orbView;
     private EkgGraphView ekgView;
 
+    // ---------- KURULUM KONTROLÜ ----------
+    private TextView btnSetupToggle;
+    private View setupPanel;
+    private TextView setupNotifStatus;
+    private TextView setupBatteryStatus;
+    private Button btnFixNotif;
+    private Button btnFixBattery;
+    private Button btnFixAutostart;
+
     private SharedPreferences prefs;
+    private boolean hasAccelerometer = true;
 
     private static final int COLOR_GREEN  = Color.parseColor("#22E88A");
     private static final int COLOR_YELLOW = Color.parseColor("#FFD60A");
@@ -55,7 +71,6 @@ public class MainActivity extends Activity {
             float dXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
             float dZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
 
-            // Duraklamışken grafik akmasın - elin titremesi "sarsıntı" gibi görünmesin
             if (!"PAUSED_GRAY".equals(state)) {
                 ekgView.pushSample(score / 100f);
             }
@@ -92,8 +107,17 @@ public class MainActivity extends Activity {
         orbView              = findViewById(R.id.orbView);
         ekgView              = findViewById(R.id.ekgView);
 
+        btnSetupToggle       = findViewById(R.id.btnSetupToggle);
+        setupPanel            = findViewById(R.id.setupPanel);
+        setupNotifStatus      = findViewById(R.id.setupNotifStatus);
+        setupBatteryStatus    = findViewById(R.id.setupBatteryStatus);
+        btnFixNotif           = findViewById(R.id.btnFixNotif);
+        btnFixBattery         = findViewById(R.id.btnFixBattery);
+        btnFixAutostart       = findViewById(R.id.btnFixAutostart);
+
         prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
 
+        checkAccelerometer();
         requestNotificationPermissionIfNeeded();
 
         btnToggle.setOnClickListener(new View.OnClickListener() {
@@ -128,9 +152,30 @@ public class MainActivity extends Activity {
             }
         });
 
+        btnSetupToggle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean show = setupPanel.getVisibility() != View.VISIBLE;
+                setupPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+                btnSetupToggle.setText(show ? "🛠️ Kurulum Kontrolünü Gizle" : "🛠️ Kurulum Kontrolü");
+            }
+        });
+
+        btnFixNotif.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { requestNotificationPermissionIfNeeded(); }
+        });
+
+        btnFixBattery.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { requestIgnoreBatteryOptimizations(); }
+        });
+
+        btnFixAutostart.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openAutostartSettings(); }
+        });
+
         orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
         updateLastAlertText();
         refreshToggleButtonFromState();
+        refreshSetupStatus();
     }
 
     @Override
@@ -139,6 +184,7 @@ public class MainActivity extends Activity {
         registerReceiver(stateReceiver, new IntentFilter(Constants.ACTION_STATE));
         updateLastAlertText();
         refreshToggleButtonFromState();
+        refreshSetupStatus(); // kullanıcı ayarlardan dönmüş olabilir, tazele
     }
 
     @Override
@@ -147,7 +193,97 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(stateReceiver); } catch (Exception ignored) {}
     }
 
+    // ================= İVMEÖLÇER KONTROLÜ =================
+
+    private void checkAccelerometer() {
+        SensorManager sm = (SensorManager) getSystemService(SENSOR_SERVICE);
+        hasAccelerometer = sm != null && sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null;
+        if (!hasAccelerometer) {
+            btnToggle.setEnabled(false);
+            btnToggle.setText("SENSÖR YOK");
+            btnToggle.setBackgroundTintList(android.content.res.ColorStateList.valueOf(COLOR_GRAY));
+            stateText.setText("DESTEKLENMİYOR");
+            stateText.setTextColor(COLOR_RED);
+            alertBar.setVisibility(View.VISIBLE);
+            alertBar.setBackgroundColor(Color.DKGRAY);
+            alertBar.setText("Bu cihazda gerekli hareket sensörü bulunmadığından\nSen-Alert çalıştırılamıyor.");
+        }
+    }
+
+    // ================= KURULUM KONTROLÜ =================
+
+    private void refreshSetupStatus() {
+        boolean notifGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        setupNotifStatus.setText(notifGranted ? "✅ Bildirim İzni: Verildi" : "❌ Bildirim İzni: Verilmedi");
+        setupNotifStatus.setTextColor(notifGranted ? COLOR_GREEN : COLOR_RED);
+        btnFixNotif.setVisibility(notifGranted ? View.GONE : View.VISIBLE);
+
+        boolean batteryOk = isIgnoringBatteryOptimizations();
+        setupBatteryStatus.setText(batteryOk ? "✅ Pil Optimizasyonu: Kısıtlama Yok" : "❌ Pil Optimizasyonu: Kısıtlı");
+        setupBatteryStatus.setTextColor(batteryOk ? COLOR_GREEN : COLOR_RED);
+        btnFixBattery.setVisibility(batteryOk ? View.GONE : View.VISIBLE);
+    }
+
+    private boolean isIgnoringBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < 23) return true;
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        return pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    private void requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            openAppSettings();
+        }
+    }
+
+    /** Üretici-özel otomatik başlatma ayar ekranı - resmi bir Android API'si yok, en iyi çaba (best-effort) */
+    private void openAutostartSettings() {
+        String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
+        Intent intent = new Intent();
+        try {
+            if (manufacturer.contains("xiaomi")) {
+                intent.setComponent(new ComponentName("com.miui.securitycenter",
+                    "com.miui.permcenter.autostart.AutoStartManagementActivity"));
+            } else if (manufacturer.contains("huawei") || manufacturer.contains("honor")) {
+                intent.setComponent(new ComponentName("com.huawei.systemmanager",
+                    "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"));
+            } else if (manufacturer.contains("oppo")) {
+                intent.setComponent(new ComponentName("com.coloros.safecenter",
+                    "com.coloros.safecenter.permission.startup.StartupAppListActivity"));
+            } else if (manufacturer.contains("vivo")) {
+                intent.setComponent(new ComponentName("com.vivo.permissionmanager",
+                    "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"));
+            } else if (manufacturer.contains("samsung")) {
+                intent.setComponent(new ComponentName("com.samsung.android.lool",
+                    "com.samsung.android.sm.ui.battery.BatteryActivity"));
+            } else {
+                openAppSettings();
+                return;
+            }
+            startActivity(intent);
+        } catch (Exception e) {
+            openAppSettings(); // bilinmeyen/değişmiş cihaz - genel uygulama ayarlarına düş
+        }
+    }
+
+    private void openAppSettings() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception ignored) {}
+    }
+
+    // ================= BAŞLAT / DURDUR =================
+
     private void onToggleClicked() {
+        if (!hasAccelerometer) return;
         boolean running = prefs.getBoolean("service_running", false);
         if (running) {
             stopService(new Intent(this, SensorService.class));
@@ -168,6 +304,7 @@ public class MainActivity extends Activity {
     }
 
     private void refreshToggleButtonFromState() {
+        if (!hasAccelerometer) return;
         boolean running = prefs.getBoolean("service_running", false);
         btnToggle.setText(running ? "DURDUR" : "BAŞLAT");
         if (!running) {
