@@ -21,7 +21,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="1: kamyon geçse bile alarm vermez · 5: ev kullanımı · 10: bebek odası"
-            android:textColor="#5E7472"
+            android:textColor="#8A9C9A"
             android:textSize="11sp"
             android:layout_marginTop="2dp"/>
 
@@ -43,6 +43,17 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:padding="10dp"
+            android:background="#0F1517"
+            android:text="Sarsıntı seviyeleri, cihazın dahili hareket sensörlerinden alınan verilere göre hesaplanır. Bu uygulama deprem büyüklüğünü veya şiddetini ölçmez; yalnızca telefon veya tabletin bulunduğu noktadaki sarsıntıyı izleyerek gerektiğinde uyarı verir."
+            android:textColor="#8A9C9A"
+            android:textSize="11sp"
+            android:lineSpacingExtra="2dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="Bildirim Türleri"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
@@ -53,7 +64,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Hem sarsıntı hem güçlü sarsıntı için aynı ayar geçerlidir - eşik farklıdır, uyarı türü aynıdır."
-            android:textColor="#5E7472"
+            android:textColor="#8A9C9A"
             android:textSize="11sp"
             android:layout_marginTop="2dp"/>
 
@@ -94,7 +105,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Uyarı bu süre kadar çalar, sonra otomatik durur. Durum devam ederse 20 saniye sonra bir kez daha tekrarlanır."
-            android:textColor="#5E7472"
+            android:textColor="#8A9C9A"
             android:textSize="11sp"
             android:layout_marginTop="2dp"/>
 
@@ -144,6 +155,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="GERİ"
+            android:backgroundTint="#0F1517"
+            android:textColor="#FFFFFF"
             android:layout_marginTop="12dp"/>
 
     </LinearLayout>
