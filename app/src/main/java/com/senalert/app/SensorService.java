@@ -34,11 +34,10 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: "elde alındı" tespiti (dz yüksek) artık ANİ BÜYÜK DARBE
- * (INSTANT_RED_OVERRIDE) kontrolünden ÖNCE ve onu ENGELLEYECEK şekilde
- * çalışıyor. Eskiden ikisi yarışıyordu - telefonu kapma hareketi hem
- * "elde alındı" sayacını başlatıyor hem de aynı anda ani darbe eşiğini
- * geçip yanlışlıkla kırmızı alarm tetikliyordu.
+ * BU TURDA: İvmeölçer yoksa (MainActivity zaten engelliyor ama servis tek
+ * başına da başlatılabilir bir Android bileşeni olduğu için burada da
+ * savunma katmanı var) servis çöküp cihazı kilitlemek yerine düzgün bir
+ * bildirimle kendini durduruyor.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -65,7 +64,7 @@ public class SensorService extends Service implements SensorEventListener {
     private long calibrateStartMs = 0;
 
     private static final long CALIBRATION_MS = 2000;
-    private static final long YELLOW_SUSTAIN_MS = 800;
+    private static final long YELLOW_SUSTAIN_MS = 400;
     private static final long RED_SUSTAIN_MS = 500;
     private static final long RELEASE_SUSTAIN_MS = 500;
     private static final long REPEAT_INTERVAL_MS = 20000;
@@ -142,9 +141,17 @@ public class SensorService extends Service implements SensorEventListener {
         cameraId = getFirstCameraWithFlash();
         notifManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
-        acquireWakeLock();
-
         createNotificationChannel();
+
+        // ---- Savunma katmanı: ivmeölçer yoksa güvenli şekilde dur ----
+        if (accelerometer == null) {
+            startForeground(NOTIF_ID, buildNotification("⚠️", "Hareket sensörü bulunamadı", 0));
+            prefs.edit().putBoolean("service_running", false).apply();
+            stopSelf();
+            return;
+        }
+
+        acquireWakeLock();
         startForeground(NOTIF_ID, buildNotification("🟤", "KALİBRASYON", 0));
 
         IntentFilter filter = new IntentFilter();
@@ -173,7 +180,7 @@ public class SensorService extends Service implements SensorEventListener {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        sensorManager.unregisterListener(this);
+        if (sensorManager != null && accelerometer != null) sensorManager.unregisterListener(this);
         stopAlarm();
         handler.removeCallbacksAndMessages(null);
         try { unregisterReceiver(controlReceiver); } catch (Exception ignored) {}
@@ -256,8 +263,6 @@ public class SensorService extends Service implements SensorEventListener {
             return;
         }
 
-        // ---- Elde alındı tespiti - ARTIK diğer tüm alarm mantığını ENGELLER ----
-        // (sürmese bile, dz yüksekken hiçbir alarm/eşik kontrolü çalışmaz)
         if (dz >= HAND_Z_DELTA) {
             if (handPendingSinceMs == 0) handPendingSinceMs = now;
             if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
