@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
     private TextView lastBroadcastText;
     private View detailsPanel;
     private Button btnRecalibrate;
-    private TextView btnMute; // artık küçük ikincil metin - Button değil
+    private TextView btnMute;
     private Button btnToggle;
     private ShakeOrbView orbView;
     private EkgGraphView ekgView;
@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
                 ekgView.pushSample(score / 100f);
             }
 
-            lastBroadcastText.setText("Son Broadcast: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
+            lastBroadcastText.setText("Son Veri Güncellemesi: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
 
             sensorText.setText(String.format(
                 Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f\nHassasiyet: %d",
@@ -367,7 +367,7 @@ public class MainActivity extends Activity {
             case "RED":
                 orbView.setState(COLOR_RED, ShakeOrbView.LEVEL_RED);
                 alertBar.setVisibility(View.GONE);
-                stateText.setText("GÜÇLÜ SARSINTI ALGILANDI");
+                stateText.setText("GÜÇLÜ SARSINTI");
                 stateText.setTextColor(COLOR_RED);
                 btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.VISIBLE);
