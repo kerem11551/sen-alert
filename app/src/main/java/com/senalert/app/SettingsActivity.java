@@ -8,6 +8,7 @@ import android.widget.CheckBox;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.SeekBar;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -21,6 +22,7 @@ public class SettingsActivity extends Activity {
 
     private CheckBox cbSound, cbVib, cbFlash;
     private RadioGroup durationGroup;
+    private Switch switchTestMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,6 +37,7 @@ public class SettingsActivity extends Activity {
         cbVib    = findViewById(R.id.cbVib);
         cbFlash  = findViewById(R.id.cbFlash);
         durationGroup = findViewById(R.id.durationGroup);
+        switchTestMode = findViewById(R.id.switchTestMode);
 
         int savedSensitivity = prefs.getInt("sensitivity", 5);
         seekSensitivity.setMax(9);
@@ -63,6 +66,10 @@ public class SettingsActivity extends Activity {
             int seconds = checkedIdNow == R.id.dur3 ? 3 : checkedIdNow == R.id.dur10 ? 10 : 5;
             prefs.edit().putInt("alert_duration_sec", seconds).apply();
         });
+
+        switchTestMode.setChecked(prefs.getBoolean("test_mode_enabled", false));
+        switchTestMode.setOnCheckedChangeListener((btn, checked) ->
+            prefs.edit().putBoolean("test_mode_enabled", checked).apply());
 
         findViewById(R.id.btnSave).setOnClickListener(new View.OnClickListener() {
             @Override
