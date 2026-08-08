@@ -158,8 +158,8 @@
             android:textSize="11sp"
             android:layout_marginTop="2dp"/>
 
-        <Switch
-            android:id="@+id/switchTestMode"
+        <CheckBox
+            android:id="@+id/cbTestMode"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Test Modunu Aç"
