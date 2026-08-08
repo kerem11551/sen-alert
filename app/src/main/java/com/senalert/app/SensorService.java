@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -21,23 +22,33 @@ import android.media.MediaPlayer;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.Vibrator;
+import android.provider.MediaStore;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.OutputStream;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: İvmeölçer yoksa (MainActivity zaten engelliyor ama servis tek
- * başına da başlatılabilir bir Android bileşeni olduğu için burada da
- * savunma katmanı var) servis çöküp cihazı kilitlemek yerine düzgün bir
- * bildirimle kendini durduruyor.
+ * V1 (XY) - GERÇEK MOTOR: alarmı, bildirimi, UI'ı yönetir. Bu turda değişmedi.
+ * Kilit ekranı görünürlüğü (VISIBILITY_PUBLIC) korunuyor.
+ *
+ * V1.1 (XYZ) - GÖLGE MOTOR: sadece Test Modu açıkken çalışır, hiçbir alarm/
+ * bildirim tetiklemez. Aynı sensör örneğini paralel değerlendirip hangi
+ * eşiği kaç ms önce/sonra geçtiğini ölçer. w=0.3 deneysel bir başlangıç
+ * ağırlığı, dogma değil - testlerden sonra değişebilir/kaldırılabilir.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -97,6 +108,22 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
     private int pendingScoreForNotif = 0;
 
+    // ================= V1.1 GÖLGE MOTOR (XYZ) =================
+    private static final float WEIGHT_Z = 0.3f;
+    private static final float ONSET_THRESHOLD = 0.05f;
+    private static final long SHADOW_PUSH_INTERVAL_MS = 100;
+    private static final int CSV_MAX_LINES = 3000;
+
+    private final float[] magBufferXYZ = new float[SMOOTH_WINDOW];
+    private int magIndexXYZ = 0;
+    private long lastShadowPushMs = 0;
+
+    private long episodeStartMs = 0;
+    private boolean xyCrossedYellow, xyCrossedRed, xyzCrossedYellow, xyzCrossedRed;
+    private long xyYellowMs = -1, xyRedMs = -1, xyzYellowMs = -1, xyzRedMs = -1;
+
+    private final List<String> csvBuffer = new ArrayList<>();
+
     private final Runnable blinkRunnable = new Runnable() {
         @Override public void run() {
             if (!alarmActive || alarmMuted) return;
@@ -120,12 +147,16 @@ public class SensorService extends Service implements SensorEventListener {
 
     private final BroadcastReceiver controlReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            if (Constants.ACTION_MUTE.equals(intent.getAction())) {
+            String action = intent.getAction();
+            if (Constants.ACTION_MUTE.equals(action)) {
                 muteAlarm();
-            } else if (Constants.ACTION_RECALIBRATE.equals(intent.getAction())) {
+            } else if (Constants.ACTION_RECALIBRATE.equals(action)) {
                 firstRead = true;
                 magIndex = 0;
+                magIndexXYZ = 0;
                 goCalibrating();
+            } else if (Constants.ACTION_SAVE_CSV.equals(action)) {
+                saveTestCsv();
             }
         }
     };
@@ -143,7 +174,6 @@ public class SensorService extends Service implements SensorEventListener {
 
         createNotificationChannel();
 
-        // ---- Savunma katmanı: ivmeölçer yoksa güvenli şekilde dur ----
         if (accelerometer == null) {
             startForeground(NOTIF_ID, buildNotification("⚠️", "Hareket sensörü bulunamadı", 0));
             prefs.edit().putBoolean("service_running", false).apply();
@@ -157,6 +187,7 @@ public class SensorService extends Service implements SensorEventListener {
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constants.ACTION_MUTE);
         filter.addAction(Constants.ACTION_RECALIBRATE);
+        filter.addAction(Constants.ACTION_SAVE_CSV);
         registerReceiver(controlReceiver, filter);
 
         updateSensitivity();
@@ -255,6 +286,10 @@ public class SensorService extends Service implements SensorEventListener {
 
         broadcastState(score, x, y, z, dXY, dz);
 
+        if (prefs.getBoolean("test_mode_enabled", false)) {
+            runShadowEngine(dx, dy, dz, dXY, now);
+        }
+
         if (currentState == State.PAUSED_GRAY) return;
 
         if (currentState == State.CALIBRATING) {
@@ -328,7 +363,7 @@ public class SensorService extends Service implements SensorEventListener {
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
-    // ================= STATE =================
+    // ================= STATE (V1 - gerçek motor, değişmedi) =================
 
     private void goCalibrating() {
         currentState = State.CALIBRATING;
@@ -382,7 +417,7 @@ public class SensorService extends Service implements SensorEventListener {
         prefs.edit().putString("last_alert_time", time).apply();
     }
 
-    // ================= UYARI =================
+    // ================= UYARI (V1) =================
 
     private void triggerAlarm() {
         if (currentState != State.RED) saveLastAlertEvent();
@@ -460,13 +495,123 @@ public class SensorService extends Service implements SensorEventListener {
         return null;
     }
 
-    // ================= BİLDİRİM (tek satır) =================
+    // ================= V1.1 GÖLGE MOTOR =================
+
+    private void runShadowEngine(float dx, float dy, float dz, float sXY, long now) {
+        float dMagXYZ = (float) Math.sqrt(dx * dx + dy * dy + (WEIGHT_Z * dz) * (WEIGHT_Z * dz));
+        magBufferXYZ[magIndexXYZ % SMOOTH_WINDOW] = dMagXYZ;
+        magIndexXYZ++;
+        int countXYZ = Math.min(magIndexXYZ, SMOOTH_WINDOW);
+        float sumXYZ = 0f;
+        for (int i = 0; i < countXYZ; i++) sumXYZ += magBufferXYZ[i];
+        float sXYZ = sumXYZ / countXYZ;
+
+        updateShadowLatency(sXY, sXYZ, now);
+
+        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s",
+            System.currentTimeMillis(), dx, dy, dz, sXY, sXYZ, simpleLabel(sXY), simpleLabel(sXYZ)));
+        if (csvBuffer.size() > CSV_MAX_LINES) csvBuffer.remove(0);
+
+        if (now - lastShadowPushMs >= SHADOW_PUSH_INTERVAL_MS) {
+            lastShadowPushMs = now;
+            broadcastShadow(sXY, sXYZ);
+        }
+    }
+
+    private void updateShadowLatency(float sXY, float sXYZ, long now) {
+        boolean moving = sXY >= ONSET_THRESHOLD || sXYZ >= ONSET_THRESHOLD;
+        if (moving && episodeStartMs == 0) {
+            episodeStartMs = now;
+            xyCrossedYellow = false; xyCrossedRed = false;
+            xyzCrossedYellow = false; xyzCrossedRed = false;
+        }
+        if (episodeStartMs != 0) {
+            if (!xyCrossedYellow && sXY >= thYellow) { xyCrossedYellow = true; xyYellowMs = now - episodeStartMs; }
+            if (!xyCrossedRed && sXY >= thRed) { xyCrossedRed = true; xyRedMs = now - episodeStartMs; }
+            if (!xyzCrossedYellow && sXYZ >= thYellow) { xyzCrossedYellow = true; xyzYellowMs = now - episodeStartMs; }
+            if (!xyzCrossedRed && sXYZ >= thRed) { xyzCrossedRed = true; xyzRedMs = now - episodeStartMs; }
+            if (!moving) episodeStartMs = 0;
+        }
+    }
+
+    private String simpleLabel(float mag) {
+        if (mag >= thRed) return "KIRMIZI";
+        if (mag >= thYellow) return "SARI";
+        return "NORMAL";
+    }
+
+    private void broadcastShadow(float sXY, float sXYZ) {
+        Intent i = new Intent(Constants.ACTION_SHADOW);
+        i.setPackage(getPackageName());
+        i.putExtra(Constants.EXTRA_SXY, sXY);
+        i.putExtra(Constants.EXTRA_SXYZ, sXYZ);
+        i.putExtra(Constants.EXTRA_STATE_XY, simpleLabel(sXY));
+        i.putExtra(Constants.EXTRA_STATE_XYZ, simpleLabel(sXYZ));
+        i.putExtra(Constants.EXTRA_XY_YELLOW_MS, xyYellowMs);
+        i.putExtra(Constants.EXTRA_XY_RED_MS, xyRedMs);
+        i.putExtra(Constants.EXTRA_XYZ_YELLOW_MS, xyzYellowMs);
+        i.putExtra(Constants.EXTRA_XYZ_RED_MS, xyzRedMs);
+        sendBroadcast(i);
+    }
+
+    private void saveTestCsv() {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz\n");
+            for (String line : csvBuffer) sb.append(line).append("\n");
+            sb.append("\n# Gecikme Sonuclari (son bolum)\n");
+            sb.append("sari_esik_xy_ms,").append(xyYellowMs).append("\n");
+            sb.append("sari_esik_xyz_ms,").append(xyzYellowMs).append("\n");
+            sb.append("kirmizi_esik_xy_ms,").append(xyRedMs).append("\n");
+            sb.append("kirmizi_esik_xyz_ms,").append(xyzRedMs).append("\n");
+            sb.append("agirlik_w,").append(WEIGHT_Z).append("\n");
+
+            String filename = "senalert_test_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".csv";
+            boolean success = writeCsvFile(filename, sb.toString());
+
+            Intent done = new Intent(Constants.ACTION_CSV_SAVED);
+            done.setPackage(getPackageName());
+            done.putExtra(Constants.EXTRA_CSV_FILENAME, success ? filename : "");
+            sendBroadcast(done);
+        } catch (Exception ignored) {}
+    }
+
+    private boolean writeCsvFile(String filename, String content) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+                cv.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+                cv.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SenAlert");
+                Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri == null) return false;
+                OutputStream os = getContentResolver().openOutputStream(uri);
+                if (os == null) return false;
+                os.write(content.getBytes());
+                os.close();
+                return true;
+            } else {
+                File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SenAlert");
+                if (!dir.exists()) dir.mkdirs();
+                File file = new File(dir, filename);
+                FileWriter fw = new FileWriter(file);
+                fw.write(content);
+                fw.close();
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ================= BİLDİRİM (tek satır, kilit ekranında görünür) =================
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                 Constants.CHANNEL_ID, "Sen-Alert İzleme", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("Arka planda sarsıntı izleme durumu");
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             notifManager.createNotificationChannel(channel);
         }
     }
@@ -485,6 +630,7 @@ public class SensorService extends Service implements SensorEventListener {
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setOngoing(true)
             .setContentIntent(pi)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .build();
     }
 
