@@ -141,6 +141,31 @@
 
         </RadioGroup>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Test Modu (V1.1 Geliştirici)"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="28dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Deneysel ikinci bir algoritmayı (Z ekseni dahil) arka planda gölge olarak çalıştırıp karşılaştırır. Gerçek alarmı hiç etkilemez, sadece gözlem yapar. Kapalıyken hiç çalışmaz, pil harcamaz."
+            android:textColor="#8A9C9A"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp"/>
+
+        <Switch
+            android:id="@+id/switchTestMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Test Modunu Aç"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="8dp"/>
+
         <Button
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
