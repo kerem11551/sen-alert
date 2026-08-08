@@ -20,6 +20,7 @@ import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -50,6 +51,13 @@ public class MainActivity extends Activity {
     private Button btnFixBattery;
     private Button btnFixAutostart;
 
+    // ---------- V1.1 KARŞILAŞTIRMA PANELİ ----------
+    private View comparisonPanel;
+    private TextView testModeOffNotice;
+    private TextView cmpSxy, cmpSxyState, cmpSxyz, cmpSxyzState;
+    private TextView cmpYellowXy, cmpYellowXyz, cmpRedXy, cmpRedXyz;
+    private Button btnSaveCsv;
+
     private SharedPreferences prefs;
     private boolean hasAccelerometer = true;
 
@@ -60,31 +68,62 @@ public class MainActivity extends Activity {
 
     private String lastAppliedState = null;
 
-    private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver mainReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            String state = intent.getStringExtra(Constants.EXTRA_STATE);
-            int score = intent.getIntExtra(Constants.EXTRA_SCORE, 0);
-            float x = intent.getFloatExtra(Constants.EXTRA_X, 0);
-            float y = intent.getFloatExtra(Constants.EXTRA_Y, 0);
-            float z = intent.getFloatExtra(Constants.EXTRA_Z, 0);
-            float dXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
-            float dZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
+            String action = intent.getAction();
 
-            if (!"PAUSED_GRAY".equals(state)) {
-                ekgView.pushSample(score / 100f);
-            }
+            if (Constants.ACTION_STATE.equals(action)) {
+                String state = intent.getStringExtra(Constants.EXTRA_STATE);
+                int score = intent.getIntExtra(Constants.EXTRA_SCORE, 0);
+                float x = intent.getFloatExtra(Constants.EXTRA_X, 0);
+                float y = intent.getFloatExtra(Constants.EXTRA_Y, 0);
+                float z = intent.getFloatExtra(Constants.EXTRA_Z, 0);
+                float dXY = intent.getFloatExtra(Constants.EXTRA_DXY, 0);
+                float dZ = intent.getFloatExtra(Constants.EXTRA_DZ, 0);
 
-            lastBroadcastText.setText("Son Veri Güncellemesi: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
+                if (!"PAUSED_GRAY".equals(state)) {
+                    ekgView.pushSample(score / 100f);
+                }
 
-            sensorText.setText(String.format(
-                Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f\nHassasiyet: %d",
-                x, y, z, dXY, dZ, prefs.getInt("sensitivity", 5)
-            ));
+                lastBroadcastText.setText("Son Veri Güncellemesi: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
 
-            if (!state.equals(lastAppliedState)) {
-                lastAppliedState = state;
-                applyState(state);
+                sensorText.setText(String.format(
+                    Locale.US, "X: %.2f  Y: %.2f  Z: %.2f\nΔXY: %.2f  ΔZ: %.2f\nHassasiyet: %d",
+                    x, y, z, dXY, dZ, prefs.getInt("sensitivity", 5)
+                ));
+
+                if (!state.equals(lastAppliedState)) {
+                    lastAppliedState = state;
+                    applyState(state);
+                }
+
+            } else if (Constants.ACTION_SHADOW.equals(action)) {
+                float sxy = intent.getFloatExtra(Constants.EXTRA_SXY, 0);
+                float sxyz = intent.getFloatExtra(Constants.EXTRA_SXYZ, 0);
+                String stateXy = intent.getStringExtra(Constants.EXTRA_STATE_XY);
+                String stateXyz = intent.getStringExtra(Constants.EXTRA_STATE_XYZ);
+                long xyYellow = intent.getLongExtra(Constants.EXTRA_XY_YELLOW_MS, -1);
+                long xyRed = intent.getLongExtra(Constants.EXTRA_XY_RED_MS, -1);
+                long xyzYellow = intent.getLongExtra(Constants.EXTRA_XYZ_YELLOW_MS, -1);
+                long xyzRed = intent.getLongExtra(Constants.EXTRA_XYZ_RED_MS, -1);
+
+                cmpSxy.setText(String.format(Locale.US, "%.2f", sxy));
+                cmpSxyState.setText(stateXy);
+                cmpSxyz.setText(String.format(Locale.US, "%.2f", sxyz));
+                cmpSxyzState.setText(stateXyz);
+                cmpYellowXy.setText(xyYellow >= 0 ? xyYellow + " ms" : "—");
+                cmpYellowXyz.setText(xyzYellow >= 0 ? xyzYellow + " ms" : "—");
+                cmpRedXy.setText(xyRed >= 0 ? xyRed + " ms" : "—");
+                cmpRedXyz.setText(xyzRed >= 0 ? xyzRed + " ms" : "—");
+
+            } else if (Constants.ACTION_CSV_SAVED.equals(action)) {
+                String filename = intent.getStringExtra(Constants.EXTRA_CSV_FILENAME);
+                if (filename != null && !filename.isEmpty()) {
+                    Toast.makeText(MainActivity.this, "Kaydedildi: İndirilenler/SenAlert/" + filename, Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "Kayıt başarısız oldu", Toast.LENGTH_LONG).show();
+                }
             }
         }
     };
@@ -114,6 +153,18 @@ public class MainActivity extends Activity {
         btnFixNotif           = findViewById(R.id.btnFixNotif);
         btnFixBattery         = findViewById(R.id.btnFixBattery);
         btnFixAutostart       = findViewById(R.id.btnFixAutostart);
+
+        comparisonPanel      = findViewById(R.id.comparisonPanel);
+        testModeOffNotice    = findViewById(R.id.testModeOffNotice);
+        cmpSxy               = findViewById(R.id.cmpSxy);
+        cmpSxyState          = findViewById(R.id.cmpSxyState);
+        cmpSxyz              = findViewById(R.id.cmpSxyz);
+        cmpSxyzState         = findViewById(R.id.cmpSxyzState);
+        cmpYellowXy          = findViewById(R.id.cmpYellowXy);
+        cmpYellowXyz         = findViewById(R.id.cmpYellowXyz);
+        cmpRedXy             = findViewById(R.id.cmpRedXy);
+        cmpRedXyz            = findViewById(R.id.cmpRedXyz);
+        btnSaveCsv           = findViewById(R.id.btnSaveCsv);
 
         prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
 
@@ -172,25 +223,43 @@ public class MainActivity extends Activity {
             @Override public void onClick(View v) { openAutostartSettings(); }
         });
 
+        btnSaveCsv.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { sendControl(Constants.ACTION_SAVE_CSV); }
+        });
+
         orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
         updateLastAlertText();
         refreshToggleButtonFromState();
         refreshSetupStatus();
+        refreshTestModeUi();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        registerReceiver(stateReceiver, new IntentFilter(Constants.ACTION_STATE));
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Constants.ACTION_STATE);
+        filter.addAction(Constants.ACTION_SHADOW);
+        filter.addAction(Constants.ACTION_CSV_SAVED);
+        registerReceiver(mainReceiver, filter);
         updateLastAlertText();
         refreshToggleButtonFromState();
         refreshSetupStatus();
+        refreshTestModeUi();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        try { unregisterReceiver(stateReceiver); } catch (Exception ignored) {}
+        try { unregisterReceiver(mainReceiver); } catch (Exception ignored) {}
+    }
+
+    // ================= V1.1 TEST MODU UI =================
+
+    private void refreshTestModeUi() {
+        boolean testMode = prefs.getBoolean("test_mode_enabled", false);
+        comparisonPanel.setVisibility(testMode ? View.VISIBLE : View.GONE);
+        testModeOffNotice.setVisibility(testMode ? View.GONE : View.VISIBLE);
     }
 
     // ================= İVMEÖLÇER KONTROLÜ =================
