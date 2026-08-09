@@ -104,7 +104,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Uyarı bu süre kadar çalar, sonra otomatik durur. Durum devam ederse 20 saniye sonra bir kez daha tekrarlanır."
+            android:text="Her tek uyarının ne kadar süreceği (ses/titreşim/ışık)."
             android:textColor="#8A9C9A"
             android:textSize="11sp"
             android:layout_marginTop="2dp"/>
@@ -137,6 +137,55 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="10 sn"
+                android:textColor="#FFFFFF"/>
+
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tekrar Sıklığı"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="28dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sarsıntı sarı veya kırmızıda devam ederse, bu süre aralığıyla uyarı tekrarlanır. Kırmızıya geçişte bu süreyi beklemeden hemen yeni uyarı verilir."
+            android:textColor="#8A9C9A"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp"/>
+
+        <RadioGroup
+            android:id="@+id/repeatGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <RadioButton
+                android:id="@+id/repeatSik"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sık (5sn)"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="20dp"/>
+
+            <RadioButton
+                android:id="@+id/repeatOrta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Orta (10sn)"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="20dp"/>
+
+            <RadioButton
+                android:id="@+id/repeatSeyrek"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Seyrek (20sn)"
                 android:textColor="#FFFFFF"/>
 
         </RadioGroup>
