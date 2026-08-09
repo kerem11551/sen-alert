@@ -42,10 +42,10 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: BASE_RED deneysel olarak 1.05'ten 0.85'e düşürüldü. Sebep:
- * temiz test verilerinde bile kırmızıya geçiş gecikmeli hissettiriyordu.
- * Diğer hiçbir parametre (SARI eşiği, Z ağırlığı, süre filtreleri)
- * değişmedi - kontrollü, tek değişkenli bir adım.
+ * BU TURDA: Tekrar sıklığı artık sabit 20sn değil, ayarlardan okunuyor
+ * (Sık=5sn / Orta=10sn / Seyrek=20sn, varsayılan Orta). Sarıdan kırmızıya
+ * geçişte zaten bekletmeden hemen yeni uyarı veriliyordu (mevcut mantık),
+ * buna dokunulmadı.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -75,10 +75,9 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long YELLOW_SUSTAIN_MS = 400;
     private static final long RED_SUSTAIN_MS = 500;
     private static final long RELEASE_SUSTAIN_MS = 500;
-    private static final long REPEAT_INTERVAL_MS = 20000;
 
     private static final float BASE_YELLOW = 0.15f;
-    private static final float BASE_RED    = 0.85f; // deneysel: 1.05 -> 0.85
+    private static final float BASE_RED    = 0.85f;
     private float thYellow = BASE_YELLOW;
     private float thRed    = BASE_RED;
 
@@ -137,7 +136,7 @@ public class SensorService extends Service implements SensorEventListener {
         @Override public void run() {
             if (currentState == State.YELLOW || currentState == State.RED) {
                 triggerAlarm();
-                handler.postDelayed(this, REPEAT_INTERVAL_MS);
+                handler.postDelayed(this, getRepeatIntervalMs());
             }
         }
     };
@@ -241,6 +240,12 @@ public class SensorService extends Service implements SensorEventListener {
         factor = Math.max(0.35f, Math.min(1.8f, factor));
         thYellow = BASE_YELLOW * factor;
         thRed    = BASE_RED    * factor;
+    }
+
+    /** Tekrar sıklığı: Sık=5sn / Orta=10sn (varsayılan) / Seyrek=20sn */
+    private long getRepeatIntervalMs() {
+        int seconds = prefs.getInt("alert_repeat_sec", 10);
+        return seconds * 1000L;
     }
 
     @Override
@@ -387,7 +392,7 @@ public class SensorService extends Service implements SensorEventListener {
         if (!already) {
             triggerAlarm();
             handler.removeCallbacks(repeatCheckRunnable);
-            handler.postDelayed(repeatCheckRunnable, REPEAT_INTERVAL_MS);
+            handler.postDelayed(repeatCheckRunnable, getRepeatIntervalMs());
         }
     }
 
@@ -399,7 +404,7 @@ public class SensorService extends Service implements SensorEventListener {
             saveLastAlertEvent();
             triggerAlarm();
             handler.removeCallbacks(repeatCheckRunnable);
-            handler.postDelayed(repeatCheckRunnable, REPEAT_INTERVAL_MS);
+            handler.postDelayed(repeatCheckRunnable, getRepeatIntervalMs());
         }
     }
 
