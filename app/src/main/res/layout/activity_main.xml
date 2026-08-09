@@ -111,8 +111,8 @@
 
         <com.senalert.app.ShakeOrbView
             android:id="@+id/orbView"
-            android:layout_width="220dp"
-            android:layout_height="150dp"
+            android:layout_width="250dp"
+            android:layout_height="250dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="16dp"/>
 
@@ -163,7 +163,6 @@
             android:textSize="12sp"
             android:visibility="invisible"/>
 
-        <!-- Her zaman erişilebilir manuel kalibrasyon - artık duruma bağlı gizlenmiyor -->
         <Button
             android:id="@+id/btnRecalibrate"
             android:layout_width="wrap_content"
