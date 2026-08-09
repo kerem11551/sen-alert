@@ -42,12 +42,10 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: "Yeniden Kalibre Et" artık CSV arabelleğini ve gölge motorun
- * gecikme ölçümlerini de temizliyor. Sebep: uygulama son uygulamalardan
- * kaydırılsa bile servis (bilerek) durmuyor - sadece "DURDUR" butonu
- * durduruyor. Kullanıcı her testten önce yeniden kalibre ettiği için,
- * bu artık doğal bir "temiz sayfa" anlamına gelmeli - CSV arabelleği de
- * dahil, yoksa ardışık testler birbirine karışıyordu (kanıtlandı).
+ * BU TURDA: BASE_RED deneysel olarak 1.05'ten 0.85'e düşürüldü. Sebep:
+ * temiz test verilerinde bile kırmızıya geçiş gecikmeli hissettiriyordu.
+ * Diğer hiçbir parametre (SARI eşiği, Z ağırlığı, süre filtreleri)
+ * değişmedi - kontrollü, tek değişkenli bir adım.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -80,7 +78,7 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long REPEAT_INTERVAL_MS = 20000;
 
     private static final float BASE_YELLOW = 0.15f;
-    private static final float BASE_RED    = 1.05f;
+    private static final float BASE_RED    = 0.85f; // deneysel: 1.05 -> 0.85
     private float thYellow = BASE_YELLOW;
     private float thRed    = BASE_RED;
 
@@ -363,7 +361,7 @@ public class SensorService extends Service implements SensorEventListener {
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
-    // ================= STATE (V1 - gerçek motor, değişmedi) =================
+    // ================= STATE (V1 - gerçek motor) =================
 
     private void goCalibrating() {
         currentState = State.CALIBRATING;
@@ -497,7 +495,6 @@ public class SensorService extends Service implements SensorEventListener {
 
     // ================= V1.1 GÖLGE MOTOR =================
 
-    /** Yeniden kalibrasyonda çağrılır - her test gerçekten sıfırdan başlasın diye */
     private void resetShadowTestData() {
         csvBuffer.clear();
         episodeStartMs = 0;
@@ -574,6 +571,7 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("kirmizi_esik_xy_ms,").append(xyRedMs).append("\n");
             sb.append("kirmizi_esik_xyz_ms,").append(xyzRedMs).append("\n");
             sb.append("agirlik_w,").append(WEIGHT_Z).append("\n");
+            sb.append("kirmizi_esigi,").append(BASE_RED).append("\n");
 
             String filename = "senalert_test_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".csv";
             boolean success = writeCsvFile(filename, sb.toString());
