@@ -21,6 +21,7 @@ public class SettingsActivity extends Activity {
 
     private CheckBox cbSound, cbVib, cbFlash;
     private RadioGroup durationGroup;
+    private RadioGroup repeatGroup;
     private CheckBox cbTestMode;
 
     @Override
@@ -36,6 +37,7 @@ public class SettingsActivity extends Activity {
         cbVib    = findViewById(R.id.cbVib);
         cbFlash  = findViewById(R.id.cbFlash);
         durationGroup = findViewById(R.id.durationGroup);
+        repeatGroup = findViewById(R.id.repeatGroup);
         cbTestMode = findViewById(R.id.cbTestMode);
 
         int savedSensitivity = prefs.getInt("sensitivity", 5);
@@ -60,11 +62,19 @@ public class SettingsActivity extends Activity {
         bindCheckbox(cbTestMode, "test_mode_enabled", false);
 
         int savedDuration = prefs.getInt("alert_duration_sec", 5);
-        int checkedId = savedDuration == 3 ? R.id.dur3 : savedDuration == 10 ? R.id.dur10 : R.id.dur5;
-        durationGroup.check(checkedId);
+        int checkedDurId = savedDuration == 3 ? R.id.dur3 : savedDuration == 10 ? R.id.dur10 : R.id.dur5;
+        durationGroup.check(checkedDurId);
         durationGroup.setOnCheckedChangeListener((group, checkedIdNow) -> {
             int seconds = checkedIdNow == R.id.dur3 ? 3 : checkedIdNow == R.id.dur10 ? 10 : 5;
             prefs.edit().putInt("alert_duration_sec", seconds).apply();
+        });
+
+        int savedRepeat = prefs.getInt("alert_repeat_sec", 10);
+        int checkedRepeatId = savedRepeat == 5 ? R.id.repeatSik : savedRepeat == 20 ? R.id.repeatSeyrek : R.id.repeatOrta;
+        repeatGroup.check(checkedRepeatId);
+        repeatGroup.setOnCheckedChangeListener((group, checkedIdNow) -> {
+            int seconds = checkedIdNow == R.id.repeatSik ? 5 : checkedIdNow == R.id.repeatSeyrek ? 20 : 10;
+            prefs.edit().putInt("alert_repeat_sec", seconds).apply();
         });
 
         findViewById(R.id.btnSave).setOnClickListener(new View.OnClickListener() {
