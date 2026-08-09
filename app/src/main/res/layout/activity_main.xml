@@ -163,6 +163,17 @@
             android:textSize="12sp"
             android:visibility="invisible"/>
 
+        <!-- Her zaman erişilebilir manuel kalibrasyon - artık duruma bağlı gizlenmiyor -->
+        <Button
+            android:id="@+id/btnRecalibrate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="10dp"
+            android:text="🔄 YENİDEN KALİBRE ET"
+            android:backgroundTint="#0F1517"
+            android:textColor="#FFFFFF"/>
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -403,17 +414,6 @@
                     android:layout_marginTop="14dp"/>
             </LinearLayout>
         </LinearLayout>
-
-        <Button
-            android:id="@+id/btnRecalibrate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="16dp"
-            android:text="YENİDEN KALİBRE ET"
-            android:backgroundTint="#0F1517"
-            android:textColor="#FFFFFF"
-            android:visibility="gone"/>
 
         <Button
             android:id="@+id/btnSettings"
