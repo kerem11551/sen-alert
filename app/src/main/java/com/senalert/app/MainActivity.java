@@ -171,6 +171,11 @@ public class MainActivity extends Activity {
         checkAccelerometer();
         requestNotificationPermissionIfNeeded();
 
+        // Yeniden Kalibre Et artık her zaman görünür/erişilebilir - sadece
+        // İZLEME BEKLEMEDE durumuna özgü değil, kullanıcı istediği an manuel
+        // kalibrasyon başlatabilsin diye (özellikle test/kalibrasyon amaçlı).
+        btnRecalibrate.setVisibility(View.VISIBLE);
+
         btnToggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onToggleClicked(); }
         });
@@ -183,8 +188,8 @@ public class MainActivity extends Activity {
 
         btnRecalibrate.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                btnRecalibrate.setVisibility(View.GONE);
                 sendControl(Constants.ACTION_RECALIBRATE);
+                Toast.makeText(MainActivity.this, "Yeniden kalibre ediliyor...", Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -362,7 +367,6 @@ public class MainActivity extends Activity {
             stateText.setTextColor(COLOR_GRAY);
             alertBar.setVisibility(View.GONE);
             btnMute.setVisibility(View.INVISIBLE);
-            btnRecalibrate.setVisibility(View.GONE);
             btnToggle.setText("BAŞLAT");
         } else {
             requestNotificationPermissionIfNeeded();
@@ -413,7 +417,6 @@ public class MainActivity extends Activity {
                 alertBar.setText("KALİBRASYON YAPILIYOR...");
                 stateText.setText("KALİBRASYON");
                 stateText.setTextColor(COLOR_GRAY);
-                btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.INVISIBLE);
                 break;
             case "GREEN":
@@ -421,7 +424,6 @@ public class MainActivity extends Activity {
                 alertBar.setVisibility(View.GONE);
                 stateText.setText("NORMAL");
                 stateText.setTextColor(COLOR_GREEN);
-                btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.INVISIBLE);
                 break;
             case "YELLOW":
@@ -429,7 +431,6 @@ public class MainActivity extends Activity {
                 alertBar.setVisibility(View.GONE);
                 stateText.setText("SARSINTI ALGILANDI");
                 stateText.setTextColor(COLOR_YELLOW);
-                btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.VISIBLE);
                 updateLastAlertText();
                 break;
@@ -438,7 +439,6 @@ public class MainActivity extends Activity {
                 alertBar.setVisibility(View.GONE);
                 stateText.setText("GÜÇLÜ SARSINTI");
                 stateText.setTextColor(COLOR_RED);
-                btnRecalibrate.setVisibility(View.GONE);
                 btnMute.setVisibility(View.VISIBLE);
                 updateLastAlertText();
                 break;
@@ -449,7 +449,6 @@ public class MainActivity extends Activity {
                 alertBar.setText("CİHAZIN KONUMU DEĞİŞTİ\nİZLEME DURDURULDU");
                 stateText.setText("İZLEME BEKLEMEDE");
                 stateText.setTextColor(COLOR_GRAY);
-                btnRecalibrate.setVisibility(View.VISIBLE);
                 btnMute.setVisibility(View.INVISIBLE);
                 break;
         }
