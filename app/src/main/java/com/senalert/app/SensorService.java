@@ -42,13 +42,12 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * V1 (XY) - GERÇEK MOTOR: alarmı, bildirimi, UI'ı yönetir. Bu turda değişmedi.
- * Kilit ekranı görünürlüğü (VISIBILITY_PUBLIC) korunuyor.
- *
- * V1.1 (XYZ) - GÖLGE MOTOR: sadece Test Modu açıkken çalışır, hiçbir alarm/
- * bildirim tetiklemez. Aynı sensör örneğini paralel değerlendirip hangi
- * eşiği kaç ms önce/sonra geçtiğini ölçer. w=0.3 deneysel bir başlangıç
- * ağırlığı, dogma değil - testlerden sonra değişebilir/kaldırılabilir.
+ * BU TURDA: "Yeniden Kalibre Et" artık CSV arabelleğini ve gölge motorun
+ * gecikme ölçümlerini de temizliyor. Sebep: uygulama son uygulamalardan
+ * kaydırılsa bile servis (bilerek) durmuyor - sadece "DURDUR" butonu
+ * durduruyor. Kullanıcı her testten önce yeniden kalibre ettiği için,
+ * bu artık doğal bir "temiz sayfa" anlamına gelmeli - CSV arabelleği de
+ * dahil, yoksa ardışık testler birbirine karışıyordu (kanıtlandı).
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -154,6 +153,7 @@ public class SensorService extends Service implements SensorEventListener {
                 firstRead = true;
                 magIndex = 0;
                 magIndexXYZ = 0;
+                resetShadowTestData();
                 goCalibrating();
             } else if (Constants.ACTION_SAVE_CSV.equals(action)) {
                 saveTestCsv();
@@ -496,6 +496,15 @@ public class SensorService extends Service implements SensorEventListener {
     }
 
     // ================= V1.1 GÖLGE MOTOR =================
+
+    /** Yeniden kalibrasyonda çağrılır - her test gerçekten sıfırdan başlasın diye */
+    private void resetShadowTestData() {
+        csvBuffer.clear();
+        episodeStartMs = 0;
+        xyCrossedYellow = false; xyCrossedRed = false;
+        xyzCrossedYellow = false; xyzCrossedRed = false;
+        xyYellowMs = -1; xyRedMs = -1; xyzYellowMs = -1; xyzRedMs = -1;
+    }
 
     private void runShadowEngine(float dx, float dy, float dz, float sXY, long now) {
         float dMagXYZ = (float) Math.sqrt(dx * dx + dy * dy + (WEIGHT_Z * dz) * (WEIGHT_Z * dz));
