@@ -86,6 +86,10 @@ public class MainActivity extends Activity {
                     ekgView.pushSample(score / 100f);
                 }
 
+                // Su terazisi baloncuğu - ham X/Y'den (eğim), dXY (sarsıntı
+                // algılama - ardışık fark) ile karışmaz, ayrı bir veri yolu.
+                orbView.setTilt(x, y);
+
                 lastBroadcastText.setText("Son Veri Güncellemesi: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
 
                 sensorText.setText(String.format(
@@ -171,9 +175,6 @@ public class MainActivity extends Activity {
         checkAccelerometer();
         requestNotificationPermissionIfNeeded();
 
-        // Yeniden Kalibre Et artık her zaman görünür/erişilebilir - sadece
-        // İZLEME BEKLEMEDE durumuna özgü değil, kullanıcı istediği an manuel
-        // kalibrasyon başlatabilsin diye (özellikle test/kalibrasyon amaçlı).
         btnRecalibrate.setVisibility(View.VISIBLE);
 
         btnToggle.setOnClickListener(new View.OnClickListener() {
