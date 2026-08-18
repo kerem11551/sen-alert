@@ -86,8 +86,6 @@ public class MainActivity extends Activity {
                     ekgView.pushSample(score / 100f);
                 }
 
-                // Su terazisi baloncuğu - ham X/Y'den (eğim), dXY (sarsıntı
-                // algılama - ardışık fark) ile karışmaz, ayrı bir veri yolu.
                 orbView.setTilt(x, y);
 
                 lastBroadcastText.setText("Son Veri Güncellemesi: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()));
@@ -174,6 +172,7 @@ public class MainActivity extends Activity {
 
         checkAccelerometer();
         requestNotificationPermissionIfNeeded();
+        requestStoragePermissionIfNeeded();
 
         btnRecalibrate.setVisibility(View.VISIBLE);
 
@@ -230,7 +229,10 @@ public class MainActivity extends Activity {
         });
 
         btnSaveCsv.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { sendControl(Constants.ACTION_SAVE_CSV); }
+            @Override public void onClick(View v) {
+                requestStoragePermissionIfNeeded();
+                sendControl(Constants.ACTION_SAVE_CSV);
+            }
         });
 
         orbView.setState(COLOR_GRAY, ShakeOrbView.LEVEL_NEUTRAL);
@@ -399,6 +401,21 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+    }
+
+    /**
+     * Android 10 (API 29) öncesi cihazlarda CSV kaydı eski usul dosya
+     * yazma yoluyla yapılıyor, bu da WRITE_EXTERNAL_STORAGE'ın çalışma
+     * zamanında (runtime) açıkça istenmesini gerektiriyor - manifest'te
+     * tanımlı olması tek başına yeterli değil. Android 10+ MediaStore
+     * kullandığı için bu izne hiç ihtiyaç duymuyor.
+     */
+    private void requestStoragePermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 29) {
+            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 102);
             }
         }
     }
