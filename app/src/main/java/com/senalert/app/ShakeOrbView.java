@@ -14,8 +14,8 @@ import android.view.View;
  * 3=GÜÇLÜ), dış ince çerçeve. Sarsıntı algılama (dXY - ardışık fark)
  * ile eğim (tilt - ham X/Y) birbirinden bağımsız, karışmaz.
  *
- * Seviye geçişleri ANİ - pulse/büyüme/fade animasyonu yok, bilinçli
- * tasarım kararı: "kullanıcının dikkati sade ve net bilgide kalsın".
+ * BU TURDA: Baloncuğun kayma yönü ters çevrildi (kullanıcı geri
+ * bildirimi - eskisi fiziksel sezgiyle tersti).
  */
 public class ShakeOrbView extends View {
 
@@ -34,8 +34,6 @@ public class ShakeOrbView extends View {
 
     private int currentLevel = LEVEL_NEUTRAL;
 
-    // Ham ivme (yerçekimi bileşeni, m/s^2) - cihazın eğimini gösterir.
-    // Sarsıntı algılamada kullanılan dXY (ardışık FARK) ile karıştırılmasın.
     private float tiltX = 0f;
     private float tiltY = 0f;
 
@@ -76,11 +74,6 @@ public class ShakeOrbView extends View {
         setLayerType(LAYER_TYPE_SOFTWARE, null);
     }
 
-    /**
-     * Seviye rengini/durumunu ayarlar. colorInt parametresi geriye dönük
-     * uyumluluk için tutuluyor (çağıran kodda değişiklik gerekmesin diye) -
-     * artık kullanılmıyor, renkler seviyeye göre sabit belirleniyor.
-     */
     public void setState(int colorInt, int level) {
         if (this.currentLevel != level) {
             this.currentLevel = level;
@@ -103,26 +96,24 @@ public class ShakeOrbView extends View {
         float cx = w / 2f;
         float cy = h / 2f;
 
-        // Dış ince çerçeve - kart görünümü
         float framePad = 3f * density;
         frameRect.set(framePad, framePad, w - framePad, h - framePad);
         canvas.drawRoundRect(frameRect, 16f * density, 16f * density, framePaint);
 
-        // 3 seviye yayı - sabit, animasyonsuz, rakamlı
         float baseRadius = Math.min(w, h) * 0.20f;
         float ringGap = Math.min(w, h) * 0.10f;
         drawLevelRing(canvas, cx, cy, baseRadius,               LEVEL_GREEN,  COLOR_GREEN,  "1");
         drawLevelRing(canvas, cx, cy, baseRadius + ringGap,     LEVEL_YELLOW, COLOR_YELLOW, "2");
         drawLevelRing(canvas, cx, cy, baseRadius + ringGap * 2, LEVEL_RED,    COLOR_RED,    "3");
 
-        // Su terazisi - hedef daire
         float targetRadius = baseRadius * 0.60f;
         canvas.drawCircle(cx, cy, targetRadius, targetPaint);
 
         // Baloncuk - cihazın eğimine göre konumlanır (ham X/Y'den)
+        // YÖN TERS ÇEVRİLDİ (kullanıcı geri bildirimi)
         float maxOffset = targetRadius * 0.55f;
-        float nx = clamp(-tiltX / 9.8f, -1f, 1f);
-        float ny = clamp(tiltY / 9.8f, -1f, 1f);
+        float nx = clamp(tiltX / 9.8f, -1f, 1f);
+        float ny = clamp(-tiltY / 9.8f, -1f, 1f);
         float bubbleX = cx + nx * maxOffset;
         float bubbleY = cy + ny * maxOffset;
         float bubbleRadius = targetRadius * 0.28f;
@@ -135,16 +126,13 @@ public class ShakeOrbView extends View {
         int color = active ? activeColor : COLOR_PALE;
         arcPaint.setColor(color);
 
-        float arcSpan = 100f; // her parantezin açıklığı (derece)
+        float arcSpan = 100f;
         float halfSpan = arcSpan / 2f;
         arcRect.set(cx - radius, cy - radius, cx + radius, cy + radius);
 
-        // Sol parantez "(" - 9 yönünde (180°) merkezli
         canvas.drawArc(arcRect, 180f - halfSpan, arcSpan, false, arcPaint);
-        // Sağ parantez ")" - 3 yönünde (0°) merkezli
         canvas.drawArc(arcRect, 0f - halfSpan, arcSpan, false, arcPaint);
 
-        // Seviye rakamı - sağ parantezin hemen yanına
         numberPaint.setColor(color);
         float labelX = cx + radius + 14f * density;
         float labelY = cy - (numberPaint.descent() + numberPaint.ascent()) / 2f;
