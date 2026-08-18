@@ -42,12 +42,12 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: CSV'ye cihaz kimliği (model/üretici/Android sürümü/sensör adı
- * ve üreticisi) ve GERÇEK ölçülen örnekleme hızı (SensorEvent.timestamp
- * üzerinden hesaplanan, Android'in "önerdiği" değer değil) eklendi.
- * Amaç: farklı telefon modellerinde toplanan CSV'lerin karşılaştırılabilir
- * olması - "Xiaomi'de 55Hz mi 100Hz mi örnekliyor" gibi soruları veriyle
- * cevaplayabilmek. Alarm/algoritma mantığına dokunulmadı.
+ * BU TURDA: Kendi kendini tetikleme (self-trigger) döngüsü düzeltildi.
+ * Sebep: titreşim alarmı çalarken telefonun kendi motoru fiziksel sarsıntı
+ * üretiyor, ivmeölçer bunu gerçek sarsıntı sanıp SARI'dan KIRMIZI'ya
+ * yükseltiyordu, titreşim bitince geri düşüyordu - bir "yankı" döngüsü.
+ * Artık kendi titreşimimiz aktifken durum makinesi dondurulur (elde
+ * alındı mantığına benzer), titreşim bitince kaldığı yerden devam eder.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -298,6 +298,15 @@ public class SensorService extends Service implements SensorEventListener {
 
         if (prefs.getBoolean("test_mode_enabled", false)) {
             runShadowEngine(dx, dy, dz, dXY, now);
+        }
+
+        // ---- KENDİ KENDİNİ TETİKLEME DÜZELTMESİ ----
+        // Titreşim motorumuz aktifken ürettiğimiz fiziksel sarsıntıyı
+        // kendi sensörümüz "gerçek sarsıntı" sanmasın diye durum makinesi
+        // burada dondurulur. Bildirim/alarm zaten çalıyor; titreşim
+        // bitince kaldığı yerden devam eder.
+        if (alarmActive && prefs.getBoolean("alert_vibration", true)) {
+            return;
         }
 
         if (currentState == State.PAUSED_GRAY) return;
@@ -588,7 +597,6 @@ public class SensorService extends Service implements SensorEventListener {
         try {
             StringBuilder sb = new StringBuilder();
 
-            // ---- Cihaz kimliği (farklı telefonlar arası karşılaştırma için) ----
             sb.append("# cihaz_model,").append(Build.MODEL).append("\n");
             sb.append("# uretici,").append(Build.MANUFACTURER).append("\n");
             sb.append("# android_surumu,").append(Build.VERSION.RELEASE).append("\n");
