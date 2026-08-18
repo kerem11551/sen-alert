@@ -42,10 +42,12 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: Tekrar sıklığı artık sabit 20sn değil, ayarlardan okunuyor
- * (Sık=5sn / Orta=10sn / Seyrek=20sn, varsayılan Orta). Sarıdan kırmızıya
- * geçişte zaten bekletmeden hemen yeni uyarı veriliyordu (mevcut mantık),
- * buna dokunulmadı.
+ * BU TURDA: CSV'ye cihaz kimliği (model/üretici/Android sürümü/sensör adı
+ * ve üreticisi) ve GERÇEK ölçülen örnekleme hızı (SensorEvent.timestamp
+ * üzerinden hesaplanan, Android'in "önerdiği" değer değil) eklendi.
+ * Amaç: farklı telefon modellerinde toplanan CSV'lerin karşılaştırılabilir
+ * olması - "Xiaomi'de 55Hz mi 100Hz mi örnekliyor" gibi soruları veriyle
+ * cevaplayabilmek. Alarm/algoritma mantığına dokunulmadı.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -103,6 +105,10 @@ public class SensorService extends Service implements SensorEventListener {
     private long lastNotifUpdateMs = 0;
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
     private int pendingScoreForNotif = 0;
+
+    // ================= ÖRNEKLEME HIZI ÖLÇÜMÜ (gerçek, SensorEvent.timestamp'ten) =================
+    private long lastEventTimestampNs = 0;
+    private double avgSamplingHz = 0;
 
     // ================= V1.1 GÖLGE MOTOR (XYZ) =================
     private static final float WEIGHT_Z = 0.3f;
@@ -251,6 +257,7 @@ public class SensorService extends Service implements SensorEventListener {
     @Override
     public void onSensorChanged(SensorEvent event) {
         updateSensitivity();
+        updateSamplingHz(event.timestamp);
 
         float x = event.values[0];
         float y = event.values[1];
@@ -340,6 +347,18 @@ public class SensorService extends Service implements SensorEventListener {
             commitState(candidate);
         }
         maybeUpdateNotification();
+    }
+
+    /** Gerçek örnekleme hızı - Android'in "önerilen" değeri değil, donanımın ürettiği gerçek zaman damgasından */
+    private void updateSamplingHz(long eventTimestampNs) {
+        if (lastEventTimestampNs != 0) {
+            long intervalNs = eventTimestampNs - lastEventTimestampNs;
+            if (intervalNs > 0) {
+                double hz = 1_000_000_000.0 / intervalNs;
+                avgSamplingHz = (avgSamplingHz == 0) ? hz : (avgSamplingHz * 0.9 + hz * 0.1);
+            }
+        }
+        lastEventTimestampNs = eventTimestampNs;
     }
 
     private void commitState(State s) {
@@ -568,6 +587,16 @@ public class SensorService extends Service implements SensorEventListener {
     private void saveTestCsv() {
         try {
             StringBuilder sb = new StringBuilder();
+
+            // ---- Cihaz kimliği (farklı telefonlar arası karşılaştırma için) ----
+            sb.append("# cihaz_model,").append(Build.MODEL).append("\n");
+            sb.append("# uretici,").append(Build.MANUFACTURER).append("\n");
+            sb.append("# android_surumu,").append(Build.VERSION.RELEASE).append("\n");
+            sb.append("# sensor_adi,").append(accelerometer != null ? accelerometer.getName() : "-").append("\n");
+            sb.append("# sensor_uretici,").append(accelerometer != null ? accelerometer.getVendor() : "-").append("\n");
+            sb.append("# ortalama_ornekleme_hz,").append(String.format(Locale.US, "%.1f", avgSamplingHz)).append("\n");
+            sb.append("\n");
+
             sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz\n");
             for (String line : csvBuffer) sb.append(line).append("\n");
             sb.append("\n# Gecikme Sonuclari (son bolum)\n");
