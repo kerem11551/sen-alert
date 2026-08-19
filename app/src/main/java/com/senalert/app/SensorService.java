@@ -110,6 +110,12 @@ public class SensorService extends Service implements SensorEventListener {
     private boolean alarmActive = false;
     private boolean alarmMuted = false;
 
+    // Titreşim motoru sinyali kesilse bile fiziksel olarak birkaç on ms
+    // sürebiliyor - bu pencerede kendi kalıntı titreşimimizi sarsıntı
+    // sanmayalım diye kısa bir soğuma payı.
+    private static final long VIBRATION_COOLDOWN_MS = 400;
+    private long vibrationCooldownUntilMs = 0;
+
     private long lastNotifUpdateMs = 0;
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
     private int pendingScoreForNotif = 0;
@@ -316,7 +322,9 @@ public class SensorService extends Service implements SensorEventListener {
             handPendingSinceMs = 0;
         }
 
-        if (alarmActive && prefs.getBoolean("alert_vibration", true)) {
+        boolean inSelfVibrationWindow = (alarmActive && prefs.getBoolean("alert_vibration", true))
+            || now < vibrationCooldownUntilMs;
+        if (inSelfVibrationWindow) {
             return;
         }
 
@@ -477,6 +485,7 @@ public class SensorService extends Service implements SensorEventListener {
         if (vibrator != null) vibrator.cancel();
         stopLoopingAlarmSound();
         if (torchOn) toggleTorch(false);
+        vibrationCooldownUntilMs = SystemClock.elapsedRealtime() + VIBRATION_COOLDOWN_MS;
     }
 
     private void startLoopingAlarmSound() {
