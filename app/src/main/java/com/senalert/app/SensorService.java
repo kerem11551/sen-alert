@@ -308,7 +308,7 @@ public class SensorService extends Service implements SensorEventListener {
         broadcastState(score, x, y, z, dScore, dz);
 
         if (prefs.getBoolean("test_mode_enabled", false)) {
-            runShadowEngine(dXY_ref, dScore, dx, dy, dz, now);
+            runShadowEngine(dXY_ref, dScore, dx, dy, dz, now, alarmActive, now < vibrationCooldownUntilMs);
         }
 
         if (dz >= HAND_Z_DELTA) {
@@ -538,11 +538,13 @@ public class SensorService extends Service implements SensorEventListener {
         xyYellowMs = -1; xyRedMs = -1; xyzYellowMs = -1; xyzRedMs = -1;
     }
 
-    private void runShadowEngine(float dXY_ref, float dScore, float dx, float dy, float dz, long now) {
+    private void runShadowEngine(float dXY_ref, float dScore, float dx, float dy, float dz, long now,
+                                  boolean alarmActiveAtSample, boolean cooldownActiveAtSample) {
         updateShadowLatency(dXY_ref, dScore, now);
 
-        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s",
-            System.currentTimeMillis(), dx, dy, dz, dXY_ref, dScore, simpleLabel(dXY_ref), simpleLabel(dScore)));
+        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s,%s,%s",
+            System.currentTimeMillis(), dx, dy, dz, dXY_ref, dScore, simpleLabel(dXY_ref), simpleLabel(dScore),
+            alarmActiveAtSample ? "1" : "0", cooldownActiveAtSample ? "1" : "0"));
         if (csvBuffer.size() > CSV_MAX_LINES) csvBuffer.remove(0);
 
         if (now - lastShadowPushMs >= SHADOW_PUSH_INTERVAL_MS) {
@@ -598,10 +600,10 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("# sensor_uretici,").append(accelerometer != null ? accelerometer.getVendor() : "-").append("\n");
             sb.append("# ortalama_ornekleme_hz,").append(String.format(Locale.US, "%.1f", avgSamplingHz)).append("\n");
             sb.append("# yumusatma_penceresi_ms,").append(SMOOTH_WINDOW_MS).append("\n");
-            sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3)\n");
+            sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3) alarm_aktif=titresim/ses/isik caliyor mu cooldown_aktif=titresim sonrasi soguma payinda mi\n");
             sb.append("\n");
 
-            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz\n");
+            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz,alarm_aktif,cooldown_aktif\n");
             for (String line : csvBuffer) sb.append(line).append("\n");
             sb.append("\n# Gecikme Sonuclari (son bolum)\n");
             sb.append("sari_esik_xy_ms,").append(xyYellowMs).append("\n");
