@@ -34,6 +34,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -42,15 +43,11 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA - TEK DEĞİŞKEN: Z ekseni artık gerçek karar mekanizmasına dahil.
- * Yedi Huawei dikey-hareket testinde XY-tabanlı eski algoritmanın kırmızıya
- * neredeyse hiç geçemediği, XYZ'nin (w=0.3) ise 2-25 kat daha hızlı ve
- * güvenilir kırmızıya ulaştığı kanıtlandı. Diğer hiçbir parametreye
- * (eşikler, süre filtreleri, w ağırlığı) dokunulmadı.
- *
- * Eski salt-yatay hesaplama (dXY_ref) hâlâ hesaplanıyor, CSV/karşılaştırma
- * panelinde "referans" olarak kalmaya devam ediyor - artık alarmı o değil,
- * dScore (Z dahil) yönetiyor.
+ * BU TURDA - TEK DEĞİŞKEN: Yumuşatma penceresi artık sabit ÖRNEK SAYISI
+ * (6 örnek) değil, sabit GERÇEK SÜRE (150ms). Xiaomi (~17Hz) ve Huawei
+ * (~50.5Hz) yan yana testlerinde 6 örnek farklı gerçek zaman aralıklarına
+ * denk geliyordu, aynı fiziksel sarsıntıda iki cihazın filtresi farklı
+ * davranıyordu. Diğer hiçbir parametreye dokunulmadı.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -90,15 +87,18 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long HAND_SUSTAIN_MS = 200;
     private long handPendingSinceMs = 0;
 
-    private static final int SMOOTH_WINDOW = 6;
     private static final float INSTANT_RED_OVERRIDE = 2.0f;
 
-    private final float[] magBufferXY = new float[SMOOTH_WINDOW];
-    private int magIndexXY = 0;
+    private static final long SMOOTH_WINDOW_MS = 150;
+    private static class Sample {
+        final long tsMs; final float magXY; final float magXYZ;
+        Sample(long tsMs, float magXY, float magXYZ) {
+            this.tsMs = tsMs; this.magXY = magXY; this.magXYZ = magXYZ;
+        }
+    }
+    private final ArrayDeque<Sample> smoothWindow = new ArrayDeque<>();
 
     private static final float WEIGHT_Z = 0.3f;
-    private final float[] magBufferXYZ = new float[SMOOTH_WINDOW];
-    private int magIndexXYZ = 0;
 
     private static final long GRAPH_PUSH_INTERVAL_MS = 60;
     private long lastGraphPushMs = 0;
@@ -156,8 +156,7 @@ public class SensorService extends Service implements SensorEventListener {
                 muteAlarm();
             } else if (Constants.ACTION_RECALIBRATE.equals(action)) {
                 firstRead = true;
-                magIndexXY = 0;
-                magIndexXYZ = 0;
+                smoothWindow.clear();
                 resetShadowTestData();
                 goCalibrating();
             } else if (Constants.ACTION_SAVE_CSV.equals(action)) {
@@ -275,24 +274,21 @@ public class SensorService extends Service implements SensorEventListener {
         float dz = Math.abs(z - lastZ);
 
         float dMagXY = (float) Math.sqrt(dx * dx + dy * dy);
-        magBufferXY[magIndexXY % SMOOTH_WINDOW] = dMagXY;
-        magIndexXY++;
-        int countXY = Math.min(magIndexXY, SMOOTH_WINDOW);
-        float sumXY = 0f;
-        for (int i = 0; i < countXY; i++) sumXY += magBufferXY[i];
-        float dXY_ref = sumXY / countXY;
-
         float dMagXYZ = (float) Math.sqrt(dx * dx + dy * dy + (WEIGHT_Z * dz) * (WEIGHT_Z * dz));
-        magBufferXYZ[magIndexXYZ % SMOOTH_WINDOW] = dMagXYZ;
-        magIndexXYZ++;
-        int countXYZ = Math.min(magIndexXYZ, SMOOTH_WINDOW);
-        float sumXYZ = 0f;
-        for (int i = 0; i < countXYZ; i++) sumXYZ += magBufferXYZ[i];
-        float dScore = sumXYZ / countXYZ;
 
         lastX = x; lastY = y; lastZ = z;
 
         long now = SystemClock.elapsedRealtime();
+
+        smoothWindow.addLast(new Sample(now, dMagXY, dMagXYZ));
+        while (!smoothWindow.isEmpty() && now - smoothWindow.peekFirst().tsMs > SMOOTH_WINDOW_MS) {
+            smoothWindow.pollFirst();
+        }
+        float sumXY = 0f, sumXYZ = 0f;
+        for (Sample s : smoothWindow) { sumXY += s.magXY; sumXYZ += s.magXYZ; }
+        int count = smoothWindow.size();
+        float dXY_ref = sumXY / count;
+        float dScore  = sumXYZ / count;
 
         if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
             lastHeartbeatMs = now;
@@ -309,6 +305,17 @@ public class SensorService extends Service implements SensorEventListener {
             runShadowEngine(dXY_ref, dScore, dx, dy, dz, now);
         }
 
+        if (dz >= HAND_Z_DELTA) {
+            if (handPendingSinceMs == 0) handPendingSinceMs = now;
+            if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
+                goGray();
+            }
+            maybeUpdateNotification();
+            return;
+        } else {
+            handPendingSinceMs = 0;
+        }
+
         if (alarmActive && prefs.getBoolean("alert_vibration", true)) {
             return;
         }
@@ -319,17 +326,6 @@ public class SensorService extends Service implements SensorEventListener {
             if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN);
             maybeUpdateNotification();
             return;
-        }
-
-        if (dz >= HAND_Z_DELTA) {
-            if (handPendingSinceMs == 0) handPendingSinceMs = now;
-            if (now - handPendingSinceMs >= HAND_SUSTAIN_MS) {
-                goGray();
-            }
-            maybeUpdateNotification();
-            return;
-        } else {
-            handPendingSinceMs = 0;
         }
 
         if (dMagXYZ >= INSTANT_RED_OVERRIDE) {
@@ -592,6 +588,7 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("# sensor_adi,").append(accelerometer != null ? accelerometer.getName() : "-").append("\n");
             sb.append("# sensor_uretici,").append(accelerometer != null ? accelerometer.getVendor() : "-").append("\n");
             sb.append("# ortalama_ornekleme_hz,").append(String.format(Locale.US, "%.1f", avgSamplingHz)).append("\n");
+            sb.append("# yumusatma_penceresi_ms,").append(SMOOTH_WINDOW_MS).append("\n");
             sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3)\n");
             sb.append("\n");
 
