@@ -42,12 +42,15 @@ import java.util.Locale;
 /**
  * Sen-Alert'in gerçek çalışma motoru.
  *
- * BU TURDA: Kendi kendini tetikleme (self-trigger) döngüsü düzeltildi.
- * Sebep: titreşim alarmı çalarken telefonun kendi motoru fiziksel sarsıntı
- * üretiyor, ivmeölçer bunu gerçek sarsıntı sanıp SARI'dan KIRMIZI'ya
- * yükseltiyordu, titreşim bitince geri düşüyordu - bir "yankı" döngüsü.
- * Artık kendi titreşimimiz aktifken durum makinesi dondurulur (elde
- * alındı mantığına benzer), titreşim bitince kaldığı yerden devam eder.
+ * BU TURDA - TEK DEĞİŞKEN: Z ekseni artık gerçek karar mekanizmasına dahil.
+ * Yedi Huawei dikey-hareket testinde XY-tabanlı eski algoritmanın kırmızıya
+ * neredeyse hiç geçemediği, XYZ'nin (w=0.3) ise 2-25 kat daha hızlı ve
+ * güvenilir kırmızıya ulaştığı kanıtlandı. Diğer hiçbir parametreye
+ * (eşikler, süre filtreleri, w ağırlığı) dokunulmadı.
+ *
+ * Eski salt-yatay hesaplama (dXY_ref) hâlâ hesaplanıyor, CSV/karşılaştırma
+ * panelinde "referans" olarak kalmaya devam ediyor - artık alarmı o değil,
+ * dScore (Z dahil) yönetiyor.
  */
 public class SensorService extends Service implements SensorEventListener {
 
@@ -88,9 +91,14 @@ public class SensorService extends Service implements SensorEventListener {
     private long handPendingSinceMs = 0;
 
     private static final int SMOOTH_WINDOW = 6;
-    private final float[] magBuffer = new float[SMOOTH_WINDOW];
-    private int magIndex = 0;
     private static final float INSTANT_RED_OVERRIDE = 2.0f;
+
+    private final float[] magBufferXY = new float[SMOOTH_WINDOW];
+    private int magIndexXY = 0;
+
+    private static final float WEIGHT_Z = 0.3f;
+    private final float[] magBufferXYZ = new float[SMOOTH_WINDOW];
+    private int magIndexXYZ = 0;
 
     private static final long GRAPH_PUSH_INTERVAL_MS = 60;
     private long lastGraphPushMs = 0;
@@ -106,18 +114,12 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long NOTIF_UPDATE_INTERVAL_MS = 1000;
     private int pendingScoreForNotif = 0;
 
-    // ================= ÖRNEKLEME HIZI ÖLÇÜMÜ (gerçek, SensorEvent.timestamp'ten) =================
     private long lastEventTimestampNs = 0;
     private double avgSamplingHz = 0;
 
-    // ================= V1.1 GÖLGE MOTOR (XYZ) =================
-    private static final float WEIGHT_Z = 0.3f;
     private static final float ONSET_THRESHOLD = 0.05f;
     private static final long SHADOW_PUSH_INTERVAL_MS = 100;
     private static final int CSV_MAX_LINES = 3000;
-
-    private final float[] magBufferXYZ = new float[SMOOTH_WINDOW];
-    private int magIndexXYZ = 0;
     private long lastShadowPushMs = 0;
 
     private long episodeStartMs = 0;
@@ -154,7 +156,7 @@ public class SensorService extends Service implements SensorEventListener {
                 muteAlarm();
             } else if (Constants.ACTION_RECALIBRATE.equals(action)) {
                 firstRead = true;
-                magIndex = 0;
+                magIndexXY = 0;
                 magIndexXYZ = 0;
                 resetShadowTestData();
                 goCalibrating();
@@ -178,14 +180,14 @@ public class SensorService extends Service implements SensorEventListener {
         createNotificationChannel();
 
         if (accelerometer == null) {
-            startForeground(NOTIF_ID, buildNotification("⚠️", "Hareket sensörü bulunamadı", 0));
+            startForeground(NOTIF_ID, buildNotification("Hareket sensörü bulunamadı", 0));
             prefs.edit().putBoolean("service_running", false).apply();
             stopSelf();
             return;
         }
 
         acquireWakeLock();
-        startForeground(NOTIF_ID, buildNotification("🟤", "KALİBRASYON", 0));
+        startForeground(NOTIF_ID, buildNotification("KALİBRASYON", 0));
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constants.ACTION_MUTE);
@@ -248,7 +250,6 @@ public class SensorService extends Service implements SensorEventListener {
         thRed    = BASE_RED    * factor;
     }
 
-    /** Tekrar sıklığı: Sık=5sn / Orta=10sn (varsayılan) / Seyrek=20sn */
     private long getRepeatIntervalMs() {
         int seconds = prefs.getInt("alert_repeat_sec", 10);
         return seconds * 1000L;
@@ -272,14 +273,22 @@ public class SensorService extends Service implements SensorEventListener {
         float dx = x - lastX;
         float dy = y - lastY;
         float dz = Math.abs(z - lastZ);
-        float dMag = (float) Math.sqrt(dx * dx + dy * dy);
 
-        magBuffer[magIndex % SMOOTH_WINDOW] = dMag;
-        magIndex++;
-        int count = Math.min(magIndex, SMOOTH_WINDOW);
-        float sum = 0f;
-        for (int i = 0; i < count; i++) sum += magBuffer[i];
-        float dXY = sum / count;
+        float dMagXY = (float) Math.sqrt(dx * dx + dy * dy);
+        magBufferXY[magIndexXY % SMOOTH_WINDOW] = dMagXY;
+        magIndexXY++;
+        int countXY = Math.min(magIndexXY, SMOOTH_WINDOW);
+        float sumXY = 0f;
+        for (int i = 0; i < countXY; i++) sumXY += magBufferXY[i];
+        float dXY_ref = sumXY / countXY;
+
+        float dMagXYZ = (float) Math.sqrt(dx * dx + dy * dy + (WEIGHT_Z * dz) * (WEIGHT_Z * dz));
+        magBufferXYZ[magIndexXYZ % SMOOTH_WINDOW] = dMagXYZ;
+        magIndexXYZ++;
+        int countXYZ = Math.min(magIndexXYZ, SMOOTH_WINDOW);
+        float sumXYZ = 0f;
+        for (int i = 0; i < countXYZ; i++) sumXYZ += magBufferXYZ[i];
+        float dScore = sumXYZ / countXYZ;
 
         lastX = x; lastY = y; lastZ = z;
 
@@ -290,21 +299,16 @@ public class SensorService extends Service implements SensorEventListener {
             prefs.edit().putLong("last_heartbeat", System.currentTimeMillis()).apply();
         }
 
-        float frac = computeFrac(dXY);
+        float frac = computeFrac(dScore);
         int score = Math.round(frac * 100);
         pendingScoreForNotif = score;
 
-        broadcastState(score, x, y, z, dXY, dz);
+        broadcastState(score, x, y, z, dScore, dz);
 
         if (prefs.getBoolean("test_mode_enabled", false)) {
-            runShadowEngine(dx, dy, dz, dXY, now);
+            runShadowEngine(dXY_ref, dScore, dx, dy, dz, now);
         }
 
-        // ---- KENDİ KENDİNİ TETİKLEME DÜZELTMESİ ----
-        // Titreşim motorumuz aktifken ürettiğimiz fiziksel sarsıntıyı
-        // kendi sensörümüz "gerçek sarsıntı" sanmasın diye durum makinesi
-        // burada dondurulur. Bildirim/alarm zaten çalıyor; titreşim
-        // bitince kaldığı yerden devam eder.
         if (alarmActive && prefs.getBoolean("alert_vibration", true)) {
             return;
         }
@@ -328,13 +332,13 @@ public class SensorService extends Service implements SensorEventListener {
             handPendingSinceMs = 0;
         }
 
-        if (dMag >= INSTANT_RED_OVERRIDE) {
+        if (dMagXYZ >= INSTANT_RED_OVERRIDE) {
             commitState(State.RED);
             maybeUpdateNotification();
             return;
         }
 
-        State candidate = dXY >= thRed ? State.RED : (dXY >= thYellow ? State.YELLOW : State.GREEN);
+        State candidate = dScore >= thRed ? State.RED : (dScore >= thYellow ? State.YELLOW : State.GREEN);
 
         if (candidate == currentState) {
             pendingState = null;
@@ -358,7 +362,6 @@ public class SensorService extends Service implements SensorEventListener {
         maybeUpdateNotification();
     }
 
-    /** Gerçek örnekleme hızı - Android'in "önerilen" değeri değil, donanımın ürettiği gerçek zaman damgasından */
     private void updateSamplingHz(long eventTimestampNs) {
         if (lastEventTimestampNs != 0) {
             long intervalNs = eventTimestampNs - lastEventTimestampNs;
@@ -380,13 +383,13 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    private float computeFrac(float dXY) {
-        if (dXY <= thYellow) {
-            return (dXY / thYellow) * 0.30f;
-        } else if (dXY <= thRed) {
-            return 0.30f + (dXY - thYellow) / (thRed - thYellow) * 0.40f;
+    private float computeFrac(float score) {
+        if (score <= thYellow) {
+            return (score / thYellow) * 0.30f;
+        } else if (score <= thRed) {
+            return 0.30f + (score - thYellow) / (thRed - thYellow) * 0.40f;
         } else {
-            float over = Math.min((dXY - thRed) / thRed, 1f);
+            float over = Math.min((score - thRed) / thRed, 1f);
             return 0.70f + over * 0.30f;
         }
     }
@@ -394,15 +397,13 @@ public class SensorService extends Service implements SensorEventListener {
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
-    // ================= STATE (V1 - gerçek motor) =================
-
     private void goCalibrating() {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
         handPendingSinceMs = 0;
         stopAlarm();
         handler.removeCallbacks(repeatCheckRunnable);
-        updateNotification("🟤", "KALİBRASYON YAPILIYOR...", 0);
+        updateNotification("KALİBRASYON YAPILIYOR...", 0);
     }
 
     private void goGreen() {
@@ -410,13 +411,13 @@ public class SensorService extends Service implements SensorEventListener {
         currentState = State.GREEN;
         stopAlarm();
         handler.removeCallbacks(repeatCheckRunnable);
-        updateNotification("🟢", "NORMAL", 0);
+        updateNotification("NORMAL", 0);
     }
 
     private void goYellow() {
         boolean already = (currentState == State.YELLOW);
         currentState = State.YELLOW;
-        updateNotification("🟡", "SARSINTI ALGILANDI", 0);
+        updateNotification("SARSINTI ALGILANDI", 0);
         if (!already) {
             triggerAlarm();
             handler.removeCallbacks(repeatCheckRunnable);
@@ -427,7 +428,7 @@ public class SensorService extends Service implements SensorEventListener {
     private void goRed() {
         boolean already = (currentState == State.RED);
         currentState = State.RED;
-        updateNotification("🔴", "GÜÇLÜ SARSINTI", 0);
+        updateNotification("GÜÇLÜ SARSINTI", 0);
         if (!already) {
             saveLastAlertEvent();
             triggerAlarm();
@@ -440,15 +441,13 @@ public class SensorService extends Service implements SensorEventListener {
         currentState = State.PAUSED_GRAY;
         stopAlarm();
         handler.removeCallbacks(repeatCheckRunnable);
-        updateNotification("⚪", "İZLEME BEKLEMEDE", 0);
+        updateNotification("İZLEME BEKLEMEDE", 0);
     }
 
     private void saveLastAlertEvent() {
         String time = new SimpleDateFormat("HH:mm · dd.MM.yyyy", Locale.US).format(new Date());
         prefs.edit().putString("last_alert_time", time).apply();
     }
-
-    // ================= UYARI (V1) =================
 
     private void triggerAlarm() {
         if (currentState != State.RED) saveLastAlertEvent();
@@ -526,8 +525,6 @@ public class SensorService extends Service implements SensorEventListener {
         return null;
     }
 
-    // ================= V1.1 GÖLGE MOTOR =================
-
     private void resetShadowTestData() {
         csvBuffer.clear();
         episodeStartMs = 0;
@@ -536,39 +533,31 @@ public class SensorService extends Service implements SensorEventListener {
         xyYellowMs = -1; xyRedMs = -1; xyzYellowMs = -1; xyzRedMs = -1;
     }
 
-    private void runShadowEngine(float dx, float dy, float dz, float sXY, long now) {
-        float dMagXYZ = (float) Math.sqrt(dx * dx + dy * dy + (WEIGHT_Z * dz) * (WEIGHT_Z * dz));
-        magBufferXYZ[magIndexXYZ % SMOOTH_WINDOW] = dMagXYZ;
-        magIndexXYZ++;
-        int countXYZ = Math.min(magIndexXYZ, SMOOTH_WINDOW);
-        float sumXYZ = 0f;
-        for (int i = 0; i < countXYZ; i++) sumXYZ += magBufferXYZ[i];
-        float sXYZ = sumXYZ / countXYZ;
-
-        updateShadowLatency(sXY, sXYZ, now);
+    private void runShadowEngine(float dXY_ref, float dScore, float dx, float dy, float dz, long now) {
+        updateShadowLatency(dXY_ref, dScore, now);
 
         csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s",
-            System.currentTimeMillis(), dx, dy, dz, sXY, sXYZ, simpleLabel(sXY), simpleLabel(sXYZ)));
+            System.currentTimeMillis(), dx, dy, dz, dXY_ref, dScore, simpleLabel(dXY_ref), simpleLabel(dScore)));
         if (csvBuffer.size() > CSV_MAX_LINES) csvBuffer.remove(0);
 
         if (now - lastShadowPushMs >= SHADOW_PUSH_INTERVAL_MS) {
             lastShadowPushMs = now;
-            broadcastShadow(sXY, sXYZ);
+            broadcastShadow(dXY_ref, dScore);
         }
     }
 
-    private void updateShadowLatency(float sXY, float sXYZ, long now) {
-        boolean moving = sXY >= ONSET_THRESHOLD || sXYZ >= ONSET_THRESHOLD;
+    private void updateShadowLatency(float dXY_ref, float dScore, long now) {
+        boolean moving = dXY_ref >= ONSET_THRESHOLD || dScore >= ONSET_THRESHOLD;
         if (moving && episodeStartMs == 0) {
             episodeStartMs = now;
             xyCrossedYellow = false; xyCrossedRed = false;
             xyzCrossedYellow = false; xyzCrossedRed = false;
         }
         if (episodeStartMs != 0) {
-            if (!xyCrossedYellow && sXY >= thYellow) { xyCrossedYellow = true; xyYellowMs = now - episodeStartMs; }
-            if (!xyCrossedRed && sXY >= thRed) { xyCrossedRed = true; xyRedMs = now - episodeStartMs; }
-            if (!xyzCrossedYellow && sXYZ >= thYellow) { xyzCrossedYellow = true; xyzYellowMs = now - episodeStartMs; }
-            if (!xyzCrossedRed && sXYZ >= thRed) { xyzCrossedRed = true; xyzRedMs = now - episodeStartMs; }
+            if (!xyCrossedYellow && dXY_ref >= thYellow) { xyCrossedYellow = true; xyYellowMs = now - episodeStartMs; }
+            if (!xyCrossedRed && dXY_ref >= thRed) { xyCrossedRed = true; xyRedMs = now - episodeStartMs; }
+            if (!xyzCrossedYellow && dScore >= thYellow) { xyzCrossedYellow = true; xyzYellowMs = now - episodeStartMs; }
+            if (!xyzCrossedRed && dScore >= thRed) { xyzCrossedRed = true; xyzRedMs = now - episodeStartMs; }
             if (!moving) episodeStartMs = 0;
         }
     }
@@ -579,13 +568,13 @@ public class SensorService extends Service implements SensorEventListener {
         return "NORMAL";
     }
 
-    private void broadcastShadow(float sXY, float sXYZ) {
+    private void broadcastShadow(float dXY_ref, float dScore) {
         Intent i = new Intent(Constants.ACTION_SHADOW);
         i.setPackage(getPackageName());
-        i.putExtra(Constants.EXTRA_SXY, sXY);
-        i.putExtra(Constants.EXTRA_SXYZ, sXYZ);
-        i.putExtra(Constants.EXTRA_STATE_XY, simpleLabel(sXY));
-        i.putExtra(Constants.EXTRA_STATE_XYZ, simpleLabel(sXYZ));
+        i.putExtra(Constants.EXTRA_SXY, dXY_ref);
+        i.putExtra(Constants.EXTRA_SXYZ, dScore);
+        i.putExtra(Constants.EXTRA_STATE_XY, simpleLabel(dXY_ref));
+        i.putExtra(Constants.EXTRA_STATE_XYZ, simpleLabel(dScore));
         i.putExtra(Constants.EXTRA_XY_YELLOW_MS, xyYellowMs);
         i.putExtra(Constants.EXTRA_XY_RED_MS, xyRedMs);
         i.putExtra(Constants.EXTRA_XYZ_YELLOW_MS, xyzYellowMs);
@@ -603,6 +592,7 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("# sensor_adi,").append(accelerometer != null ? accelerometer.getName() : "-").append("\n");
             sb.append("# sensor_uretici,").append(accelerometer != null ? accelerometer.getVendor() : "-").append("\n");
             sb.append("# ortalama_ornekleme_hz,").append(String.format(Locale.US, "%.1f", avgSamplingHz)).append("\n");
+            sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3)\n");
             sb.append("\n");
 
             sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz\n");
@@ -653,8 +643,6 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    // ================= BİLDİRİM (tek satır, kilit ekranında görünür) =================
-
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -665,12 +653,12 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    private Notification buildNotification(String dot, String text, int score) {
+    private Notification buildNotification(String text, int score) {
         PendingIntent pi = PendingIntent.getActivity(this, 0,
             new Intent(this, MainActivity.class),
             Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
 
-        String content = dot + " " + text + (score > 0 ? " · " + score + "/100" : "");
+        String content = text + (score > 0 ? " · " + score + "/100" : "");
 
         return new Notification.Builder(this)
             .setChannelId(Constants.CHANNEL_ID)
@@ -683,8 +671,8 @@ public class SensorService extends Service implements SensorEventListener {
             .build();
     }
 
-    private void updateNotification(String dot, String text, int score) {
-        notifManager.notify(NOTIF_ID, buildNotification(dot, text, score));
+    private void updateNotification(String text, int score) {
+        notifManager.notify(NOTIF_ID, buildNotification(text, score));
     }
 
     private void maybeUpdateNotification() {
@@ -692,8 +680,7 @@ public class SensorService extends Service implements SensorEventListener {
         if (now - lastNotifUpdateMs < NOTIF_UPDATE_INTERVAL_MS) return;
         lastNotifUpdateMs = now;
         if (currentState == State.CALIBRATING || currentState == State.PAUSED_GRAY) return;
-        String dot = currentState == State.RED ? "🔴" : currentState == State.YELLOW ? "🟡" : "🟢";
-        updateNotification(dot, stateLabel(), pendingScoreForNotif);
+        updateNotification(stateLabel(), pendingScoreForNotif);
     }
 
     private String stateLabel() {
@@ -705,7 +692,7 @@ public class SensorService extends Service implements SensorEventListener {
         }
     }
 
-    private void broadcastState(int score, float x, float y, float z, float dXY, float dZ) {
+    private void broadcastState(int score, float x, float y, float z, float dScore, float dZ) {
         long now = SystemClock.elapsedRealtime();
         if (now - lastGraphPushMs < GRAPH_PUSH_INTERVAL_MS) return;
         lastGraphPushMs = now;
@@ -717,7 +704,7 @@ public class SensorService extends Service implements SensorEventListener {
         i.putExtra(Constants.EXTRA_X, x);
         i.putExtra(Constants.EXTRA_Y, y);
         i.putExtra(Constants.EXTRA_Z, z);
-        i.putExtra(Constants.EXTRA_DXY, dXY);
+        i.putExtra(Constants.EXTRA_DXY, dScore);
         i.putExtra(Constants.EXTRA_DZ, dZ);
         sendBroadcast(i);
     }
