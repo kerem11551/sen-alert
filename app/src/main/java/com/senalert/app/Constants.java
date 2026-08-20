@@ -32,4 +32,12 @@ public class Constants {
     // Service -> Activity (CSV kaydetme sonucu)
     public static final String ACTION_CSV_SAVED   = "com.senalert.app.CSV_SAVED";
     public static final String EXTRA_CSV_FILENAME = "csv_filename";
+
+    // Service -> Activity (V1.2 fiziksel kalibrasyon ilerlemesi)
+    public static final String ACTION_CALIB_PROGRESS = "com.senalert.app.CALIB_PROGRESS";
+    public static final String EXTRA_CALIB_PHASE     = "calib_phase";       // NOISE / TAPS / DONE / FAILED
+    public static final String EXTRA_CALIB_TAPS_DONE = "calib_taps_done";   // 0-3
+    public static final String EXTRA_CALIB_SECONDS_LEFT = "calib_seconds_left";
+    public static final String EXTRA_CALIB_DEVICE_FACTOR = "calib_device_factor";
+    public static final String EXTRA_CALIB_QUALITY   = "calib_quality";     // GOOD / LOW
 }
