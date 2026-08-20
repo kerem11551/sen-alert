@@ -69,6 +69,44 @@ public class SensorService extends Service implements SensorEventListener {
     private State pendingState = null;
     private long pendingSinceMs = 0;
 
+    // ================= V1.2 FİZİKSEL KALİBRASYON MODÜLÜ =================
+    // ÖNEMLİ: Bu bölüm GERÇEK ALARM KARARINI ETKİLEMEZ. deviceFactor ve
+    // normalizedSignal sadece CSV'ye paralel/gözlemsel olarak yazılır.
+    // Gerçek alarm hâlâ eski dScore + sabit eşiklerle (BASE_YELLOW/BASE_RED)
+    // çalışmaya devam eder - bu bilinçli bir tasarım kararı, V1.2'nin
+    // gerçekten işe yarayıp yaramadığını CSV karşılaştırmasıyla ölçmek için.
+    private enum CalibPhase { QUICK, NOISE, TAPS, DONE, FAILED }
+    private CalibPhase calibPhase = CalibPhase.NOISE;
+    private long calibPhaseStartMs = 0;
+
+    private static final long QUICK_CALIBRATION_MS = 2000; // "Yeniden Kalibre Et" - hızlı taban sıfırlama
+    private static final long NOISE_PHASE_MS = 10000;   // 10sn sessizlik (SADECE ilk kurulumda)
+    private static final long TAP_TIMEOUT_MS = 20000;   // 3 vuruş için maks bekleme
+    private static final long TAP_REFRACTORY_MS = 300;  // aynı vuruşu iki kez saymamak için
+    private static final int  TAP_TARGET = 3;
+    private static final float TAP_START_MULTIPLIER = 6f; // gürültünün kaç katı = vuruş başlangıcı
+
+    // TODO: Bu, Xiaomi referans cihazında GERÇEK 3-vuruş kalibrasyonu
+    // yapıldıktan sonra ölçülen değerle güncellenmeli. Şimdilik CSV
+    // testlerinden elde ettiğimiz hafif/orta sarsıntı düzeyine dayanan
+    // GEÇİCİ bir tahmin - kesin doğru kabul edilmemeli.
+    private static final float REFERENCE_PEAK = 0.60f;
+    private static final float DEVICE_FACTOR_MIN = 0.5f;
+    private static final float DEVICE_FACTOR_MAX = 3.0f;
+    private static final String CALIB_VERSION = "1.2";
+
+    private final List<Float> noiseSamples = new ArrayList<>();
+    private final List<Float> tapPeaks = new ArrayList<>();
+    private boolean inTapPeak = false;
+    private float currentTapPeakValue = 0f;
+    private long tapRefractoryUntilMs = 0;
+
+    private float calibNoiseMean = 0f;
+    private float calibNoiseStd = 0f;
+    private float calibDeviceFactor = 1.0f; // varsayılan: düzeltme yok
+    private String calibQuality = "BEKLENIYOR";
+    private long lastCalibBroadcastMs = 0;
+
     private float lastX, lastY, lastZ;
     private boolean firstRead = true;
     private long calibrateStartMs = 0;
@@ -175,6 +213,10 @@ public class SensorService extends Service implements SensorEventListener {
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        calibDeviceFactor = prefs.getFloat("calib_device_factor", 1.0f);
+        calibNoiseMean = prefs.getFloat("calib_noise_mean", 0f);
+        calibNoiseStd = prefs.getFloat("calib_noise_std", 0.02f);
+        calibQuality = prefs.getString("calib_quality", "BEKLENIYOR");
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -210,7 +252,14 @@ public class SensorService extends Service implements SensorEventListener {
 
         WatchdogReceiver.scheduleNext(this);
 
-        goCalibrating();
+        // İlk kurulumda (calib_completed henüz yoksa) tam fiziksel
+        // kalibrasyon (10sn + 3 vuruş) bir kez çalışır. Sonraki tüm
+        // başlatmalarda hızlı kalibrasyon (goCalibrating) kullanılır.
+        if (!prefs.getBoolean("calib_completed", false)) {
+            startPhysicalCalibration();
+        } else {
+            goCalibrating();
+        }
     }
 
     @Override
@@ -296,16 +345,20 @@ public class SensorService extends Service implements SensorEventListener {
         float dXY_ref = sumXY / count;
         float dScore  = sumXYZ / count;
 
+        // ---- V1.2: GERÇEK karar artık cihaz katsayısıyla normalize edilmiş sinyali kullanıyor ----
+        float normalizedScore = dScore * calibDeviceFactor;
+        float normalizedInstant = dMagXYZ * calibDeviceFactor;
+
         if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
             lastHeartbeatMs = now;
             prefs.edit().putLong("last_heartbeat", System.currentTimeMillis()).apply();
         }
 
-        float frac = computeFrac(dScore);
+        float frac = computeFrac(normalizedScore);
         int score = Math.round(frac * 100);
         pendingScoreForNotif = score;
 
-        broadcastState(score, x, y, z, dScore, dz);
+        broadcastState(score, x, y, z, normalizedScore, dz);
 
         if (prefs.getBoolean("test_mode_enabled", false)) {
             runShadowEngine(dXY_ref, dScore, dx, dy, dz, now, alarmActive, now < vibrationCooldownUntilMs, currentState.name());
@@ -331,18 +384,18 @@ public class SensorService extends Service implements SensorEventListener {
         if (currentState == State.PAUSED_GRAY) return;
 
         if (currentState == State.CALIBRATING) {
-            if (now - calibrateStartMs >= CALIBRATION_MS) commitState(State.GREEN);
+            runCalibrationStep(dMagXYZ, dScore, now);
             maybeUpdateNotification();
             return;
         }
 
-        if (dMagXYZ >= INSTANT_RED_OVERRIDE) {
+        if (normalizedInstant >= INSTANT_RED_OVERRIDE) {
             commitState(State.RED);
             maybeUpdateNotification();
             return;
         }
 
-        State candidate = dScore >= thRed ? State.RED : (dScore >= thYellow ? State.YELLOW : State.GREEN);
+        State candidate = normalizedScore >= thRed ? State.RED : (normalizedScore >= thYellow ? State.YELLOW : State.GREEN);
 
         if (candidate == currentState) {
             pendingState = null;
@@ -401,6 +454,11 @@ public class SensorService extends Service implements SensorEventListener {
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
+    /**
+     * HIZLI kalibrasyon - "Yeniden Kalibre Et" butonunda ve normal
+     * başlatmalarda kullanılır (~2sn, eski davranış). Fiziksel cihaz
+     * katsayısını YENİDEN ÖLÇMEZ - sadece taban/konum sıfırlanır.
+     */
     private void goCalibrating() {
         currentState = State.CALIBRATING;
         calibrateStartMs = SystemClock.elapsedRealtime();
@@ -408,6 +466,187 @@ public class SensorService extends Service implements SensorEventListener {
         stopAlarm();
         handler.removeCallbacks(repeatCheckRunnable);
         updateNotification("KALİBRASYON YAPILIYOR...", 0);
+
+        calibPhase = CalibPhase.QUICK;
+        calibPhaseStartMs = calibrateStartMs;
+        broadcastCalibProgress();
+    }
+
+    /**
+     * TAM (fiziksel) kalibrasyon - SADECE ilk kurulumda, "calib_completed"
+     * henüz false iken bir kez çağrılır. 10sn sessizlik + 3 vuruş ister.
+     * Bittikten sonra bir daha otomatik tetiklenmez.
+     */
+    private void startPhysicalCalibration() {
+        currentState = State.CALIBRATING;
+        calibrateStartMs = SystemClock.elapsedRealtime();
+        handPendingSinceMs = 0;
+        stopAlarm();
+        handler.removeCallbacks(repeatCheckRunnable);
+        updateNotification("İLK KURULUM KALİBRASYONU...", 0);
+
+        calibPhase = CalibPhase.NOISE;
+        calibPhaseStartMs = calibrateStartMs;
+        noiseSamples.clear();
+        tapPeaks.clear();
+        inTapPeak = false;
+        currentTapPeakValue = 0f;
+        tapRefractoryUntilMs = 0;
+        calibQuality = "BEKLENIYOR";
+        broadcastCalibProgress();
+    }
+
+    /**
+     * V1.2 fiziksel kalibrasyon: önce 10sn sessizlik (gürültü tabanı),
+     * sonra 3 hafif vuruş (cihazın dinamik tepkisi). Sonuç sadece
+     * deviceFactor/normalizedSignal üretir - gerçek alarmı etkilemez.
+     */
+    private void runCalibrationStep(float rawMagXYZ, float smoothedScore, long now) {
+        if (calibPhase == CalibPhase.QUICK) {
+            long elapsed = now - calibPhaseStartMs;
+            if (elapsed >= QUICK_CALIBRATION_MS) {
+                commitState(State.GREEN);
+            }
+            broadcastCalibProgress();
+            return;
+        }
+
+        if (calibPhase == CalibPhase.NOISE) {
+            noiseSamples.add(smoothedScore);
+            long elapsed = now - calibPhaseStartMs;
+            if (elapsed >= NOISE_PHASE_MS) {
+                finishNoisePhase();
+            }
+            broadcastCalibProgress();
+            return;
+        }
+
+        if (calibPhase == CalibPhase.TAPS) {
+            float tapStartThreshold = Math.max(calibNoiseMean + TAP_START_MULTIPLIER * calibNoiseStd, 0.05f);
+
+            if (now >= tapRefractoryUntilMs) {
+                if (rawMagXYZ >= tapStartThreshold) {
+                    if (!inTapPeak) {
+                        inTapPeak = true;
+                        currentTapPeakValue = rawMagXYZ;
+                    } else {
+                        currentTapPeakValue = Math.max(currentTapPeakValue, rawMagXYZ);
+                    }
+                } else if (inTapPeak) {
+                    // vuruş bitti
+                    tapPeaks.add(currentTapPeakValue);
+                    inTapPeak = false;
+                    tapRefractoryUntilMs = now + TAP_REFRACTORY_MS;
+                    if (tapPeaks.size() >= TAP_TARGET) {
+                        finishTapsPhase();
+                        broadcastCalibProgress();
+                        return;
+                    }
+                }
+            }
+
+            long elapsed = now - calibPhaseStartMs;
+            if (elapsed >= TAP_TIMEOUT_MS) {
+                finishTapsPhase(); // ne kadar vuruş toplandıysa onunla devam
+            }
+            broadcastCalibProgress();
+            return;
+        }
+
+        // DONE veya FAILED - kalibrasyon tamam, GREEN'e geç
+        commitState(State.GREEN);
+    }
+
+    private void finishNoisePhase() {
+        if (!noiseSamples.isEmpty()) {
+            float sum = 0f;
+            for (float v : noiseSamples) sum += v;
+            calibNoiseMean = sum / noiseSamples.size();
+            float sqSum = 0f;
+            for (float v : noiseSamples) sqSum += (v - calibNoiseMean) * (v - calibNoiseMean);
+            calibNoiseStd = (float) Math.sqrt(sqSum / noiseSamples.size());
+        } else {
+            calibNoiseMean = 0f;
+            calibNoiseStd = 0.02f; // makul varsayılan
+        }
+        calibPhase = CalibPhase.TAPS;
+        calibPhaseStartMs = SystemClock.elapsedRealtime();
+        tapRefractoryUntilMs = calibPhaseStartMs; // vuruş fazı hemen başlasın
+    }
+
+    private void finishTapsPhase() {
+        int n = tapPeaks.size();
+        if (n == 0) {
+            // hiç vuruş algılanamadı - başarısız, güvenli varsayılana dön
+            calibDeviceFactor = 1.0f;
+            calibQuality = "BASARISIZ";
+            calibPhase = CalibPhase.FAILED;
+            saveCalibProfile();
+            return;
+        }
+
+        // medyan tepe değeri (tek bir sert vuruşa karşı daha dayanıklı)
+        List<Float> sorted = new ArrayList<>(tapPeaks);
+        java.util.Collections.sort(sorted);
+        float medianPeak = sorted.get(sorted.size() / 2);
+
+        float mean = 0f;
+        for (float v : tapPeaks) mean += v;
+        mean /= n;
+
+        float cv;
+        if (n >= 2 && mean > 0.0001f) {
+            float sqSum = 0f;
+            for (float v : tapPeaks) sqSum += (v - mean) * (v - mean);
+            float std = (float) Math.sqrt(sqSum / n);
+            cv = std / mean;
+        } else {
+            cv = 0f;
+        }
+
+        float factor = REFERENCE_PEAK / Math.max(medianPeak, 0.01f);
+        factor = Math.max(DEVICE_FACTOR_MIN, Math.min(DEVICE_FACTOR_MAX, factor));
+
+        calibDeviceFactor = factor;
+        calibQuality = (n >= TAP_TARGET && cv <= 0.5f) ? "IYI" : "DUSUK";
+        calibPhase = CalibPhase.DONE;
+        saveCalibProfile();
+    }
+
+    private void saveCalibProfile() {
+        prefs.edit()
+            .putString("calib_version", CALIB_VERSION)
+            .putFloat("calib_noise_mean", calibNoiseMean)
+            .putFloat("calib_noise_std", calibNoiseStd)
+            .putFloat("calib_device_factor", calibDeviceFactor)
+            .putString("calib_quality", calibQuality)
+            .putInt("calib_tap_count", tapPeaks.size())
+            .putLong("calib_timestamp", System.currentTimeMillis())
+            .putBoolean("calib_completed", true) // bir daha otomatik tetiklenmesin
+            .apply();
+    }
+
+    private void broadcastCalibProgress() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastCalibBroadcastMs < 200) return; // UI'ı boğmayalım
+        lastCalibBroadcastMs = now;
+
+        Intent i = new Intent(Constants.ACTION_CALIB_PROGRESS);
+        i.setPackage(getPackageName());
+        i.putExtra(Constants.EXTRA_CALIB_PHASE, calibPhase.name());
+        i.putExtra(Constants.EXTRA_CALIB_TAPS_DONE, tapPeaks.size());
+        long secondsLeft;
+        if (calibPhase == CalibPhase.NOISE) {
+            secondsLeft = Math.max(0, (NOISE_PHASE_MS - (now - calibPhaseStartMs)) / 1000);
+        } else if (calibPhase == CalibPhase.TAPS) {
+            secondsLeft = Math.max(0, (TAP_TIMEOUT_MS - (now - calibPhaseStartMs)) / 1000);
+        } else {
+            secondsLeft = 0;
+        }
+        i.putExtra(Constants.EXTRA_CALIB_SECONDS_LEFT, secondsLeft);
+        i.putExtra(Constants.EXTRA_CALIB_DEVICE_FACTOR, calibDeviceFactor);
+        i.putExtra(Constants.EXTRA_CALIB_QUALITY, calibQuality);
+        sendBroadcast(i);
     }
 
     private void goGreen() {
@@ -542,9 +781,14 @@ public class SensorService extends Service implements SensorEventListener {
                                   boolean alarmActiveAtSample, boolean cooldownActiveAtSample, String realStateAtSample) {
         updateShadowLatency(dXY_ref, dScore, now);
 
-        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s,%s,%s,%s",
+        // ---- V1.2: paralel/gözlemsel normalizasyon (gerçek alarmı etkilemez) ----
+        float normalizedSignal = dScore * calibDeviceFactor;
+        String newState = simpleLabel(normalizedSignal);
+
+        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s,%s,%s,%s,%.4f,%s,%.3f,%.4f,%s",
             System.currentTimeMillis(), dx, dy, dz, dXY_ref, dScore, simpleLabel(dXY_ref), simpleLabel(dScore),
-            alarmActiveAtSample ? "1" : "0", cooldownActiveAtSample ? "1" : "0", realStateAtSample));
+            alarmActiveAtSample ? "1" : "0", cooldownActiveAtSample ? "1" : "0", realStateAtSample,
+            normalizedSignal, newState, calibDeviceFactor, calibNoiseMean, calibQuality));
         if (csvBuffer.size() > CSV_MAX_LINES) csvBuffer.remove(0);
 
         if (now - lastShadowPushMs >= SHADOW_PUSH_INTERVAL_MS) {
@@ -604,10 +848,16 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("# sensor_surumu,").append(accelerometer != null ? String.valueOf(accelerometer.getVersion()) : "-").append("\n");
             sb.append("# ortalama_ornekleme_hz,").append(String.format(Locale.US, "%.1f", avgSamplingHz)).append("\n");
             sb.append("# yumusatma_penceresi_ms,").append(SMOOTH_WINDOW_MS).append("\n");
-            sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3) alarm_aktif/cooldown_aktif=titresim bilgisi gercek_durum=UYGULAMANIN ASIL KARARI (durum_xy/durum_xyz sadece ham karsilastirma, alarm bunlari degil gercek_durum'u yansitir)\n");
+            sb.append("# calib_versiyon,").append(CALIB_VERSION).append("\n");
+            sb.append("# calib_gurultu_ortalama,").append(String.format(Locale.US, "%.4f", calibNoiseMean)).append("\n");
+            sb.append("# calib_gurultu_std,").append(String.format(Locale.US, "%.4f", calibNoiseStd)).append("\n");
+            sb.append("# calib_device_factor,").append(String.format(Locale.US, "%.3f", calibDeviceFactor)).append("\n");
+            sb.append("# calib_kalite,").append(calibQuality).append("\n");
+            sb.append("# calib_referans_peak_gecici,").append(REFERENCE_PEAK).append(" (TODO: Xiaomi gercek kalibrasyonundan sonra guncellenecek)\n");
+            sb.append("# not,Sxy=referans(eski/salt-yatay, alarmi yonetmiyor) Sxyz=Z dahil ham skor(w=0.3, device_factor UYGULANMADAN) normalized_signal=Sxyz*device_factor - ARTIK GERCEK ALARMI BU YONETIYOR (V1.2) gercek_durum=UYGULAMANIN ASIL KARARI (normalized_signal'a gore) durum_xy/durum_xyz/new_state=HAM (sureli filtre olmadan) karsilastirma etiketleri\n");
             sb.append("\n");
 
-            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz,alarm_aktif,cooldown_aktif,gercek_durum\n");
+            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz,alarm_aktif,cooldown_aktif,gercek_durum,normalized_signal,new_state,device_factor,noise_floor,calib_quality\n");
             for (String line : csvBuffer) sb.append(line).append("\n");
             sb.append("\n# Gecikme Sonuclari (son bolum)\n");
             sb.append("sari_esik_xy_ms,").append(xyYellowMs).append("\n");
