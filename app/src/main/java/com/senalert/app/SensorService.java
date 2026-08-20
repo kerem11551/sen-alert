@@ -308,7 +308,7 @@ public class SensorService extends Service implements SensorEventListener {
         broadcastState(score, x, y, z, dScore, dz);
 
         if (prefs.getBoolean("test_mode_enabled", false)) {
-            runShadowEngine(dXY_ref, dScore, dx, dy, dz, now, alarmActive, now < vibrationCooldownUntilMs);
+            runShadowEngine(dXY_ref, dScore, dx, dy, dz, now, alarmActive, now < vibrationCooldownUntilMs, currentState.name());
         }
 
         if (dz >= HAND_Z_DELTA) {
@@ -539,12 +539,12 @@ public class SensorService extends Service implements SensorEventListener {
     }
 
     private void runShadowEngine(float dXY_ref, float dScore, float dx, float dy, float dz, long now,
-                                  boolean alarmActiveAtSample, boolean cooldownActiveAtSample) {
+                                  boolean alarmActiveAtSample, boolean cooldownActiveAtSample, String realStateAtSample) {
         updateShadowLatency(dXY_ref, dScore, now);
 
-        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s,%s,%s",
+        csvBuffer.add(String.format(Locale.US, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s,%s,%s,%s",
             System.currentTimeMillis(), dx, dy, dz, dXY_ref, dScore, simpleLabel(dXY_ref), simpleLabel(dScore),
-            alarmActiveAtSample ? "1" : "0", cooldownActiveAtSample ? "1" : "0"));
+            alarmActiveAtSample ? "1" : "0", cooldownActiveAtSample ? "1" : "0", realStateAtSample));
         if (csvBuffer.size() > CSV_MAX_LINES) csvBuffer.remove(0);
 
         if (now - lastShadowPushMs >= SHADOW_PUSH_INTERVAL_MS) {
@@ -598,12 +598,16 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("# android_surumu,").append(Build.VERSION.RELEASE).append("\n");
             sb.append("# sensor_adi,").append(accelerometer != null ? accelerometer.getName() : "-").append("\n");
             sb.append("# sensor_uretici,").append(accelerometer != null ? accelerometer.getVendor() : "-").append("\n");
+            sb.append("# sensor_cozunurluk,").append(accelerometer != null ? String.format(Locale.US, "%.6f", accelerometer.getResolution()) : "-").append("\n");
+            sb.append("# sensor_maks_araligi,").append(accelerometer != null ? String.format(Locale.US, "%.3f", accelerometer.getMaximumRange()) : "-").append("\n");
+            sb.append("# sensor_guc_uA,").append(accelerometer != null ? String.format(Locale.US, "%.3f", accelerometer.getPower()) : "-").append("\n");
+            sb.append("# sensor_surumu,").append(accelerometer != null ? String.valueOf(accelerometer.getVersion()) : "-").append("\n");
             sb.append("# ortalama_ornekleme_hz,").append(String.format(Locale.US, "%.1f", avgSamplingHz)).append("\n");
             sb.append("# yumusatma_penceresi_ms,").append(SMOOTH_WINDOW_MS).append("\n");
-            sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3) alarm_aktif=titresim/ses/isik caliyor mu cooldown_aktif=titresim sonrasi soguma payinda mi\n");
+            sb.append("# not,Sxy=referans(eski/salt-yatay) Sxyz=GERCEK(Z dahil w=0.3) alarm_aktif/cooldown_aktif=titresim bilgisi gercek_durum=UYGULAMANIN ASIL KARARI (durum_xy/durum_xyz sadece ham karsilastirma, alarm bunlari degil gercek_durum'u yansitir)\n");
             sb.append("\n");
 
-            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz,alarm_aktif,cooldown_aktif\n");
+            sb.append("timestamp,dx,dy,dz,Sxy,Sxyz,durum_xy,durum_xyz,alarm_aktif,cooldown_aktif,gercek_durum\n");
             for (String line : csvBuffer) sb.append(line).append("\n");
             sb.append("\n# Gecikme Sonuclari (son bolum)\n");
             sb.append("sari_esik_xy_ms,").append(xyYellowMs).append("\n");
