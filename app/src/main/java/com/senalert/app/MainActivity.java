@@ -126,6 +126,23 @@ public class MainActivity extends Activity {
                 } else {
                     Toast.makeText(MainActivity.this, "Kayıt başarısız oldu", Toast.LENGTH_LONG).show();
                 }
+
+            } else if (Constants.ACTION_CALIB_PROGRESS.equals(action)) {
+                String phase = intent.getStringExtra(Constants.EXTRA_CALIB_PHASE);
+                int tapsDone = intent.getIntExtra(Constants.EXTRA_CALIB_TAPS_DONE, 0);
+                long secLeft = intent.getLongExtra(Constants.EXTRA_CALIB_SECONDS_LEFT, 0);
+                float factor = intent.getFloatExtra(Constants.EXTRA_CALIB_DEVICE_FACTOR, 1.0f);
+                String quality = intent.getStringExtra(Constants.EXTRA_CALIB_QUALITY);
+
+                if ("NOISE".equals(phase)) {
+                    alertBar.setText("KALİBRASYON: Sessizlik ölçülüyor... (" + secLeft + "sn)\nTelefonu düz bir yüzeye koyup dokunmayın.");
+                } else if ("TAPS".equals(phase)) {
+                    alertBar.setText("KALİBRASYON: Ekrana hafifçe vurun (" + tapsDone + "/3)\nVuruşlar arasında ~1sn bekleyin.");
+                } else if ("DONE".equals(phase)) {
+                    alertBar.setText(String.format(Locale.US, "Kalibrasyon tamamlandı ✓ (katsayı: %.2f, kalite: %s)", factor, quality));
+                } else if ("FAILED".equals(phase)) {
+                    alertBar.setText("Kalibrasyon vuruş algılayamadı - varsayılan kullanılıyor.\nAyarlar'dan tekrar deneyebilirsiniz.");
+                }
             }
         }
     };
@@ -249,6 +266,7 @@ public class MainActivity extends Activity {
         filter.addAction(Constants.ACTION_STATE);
         filter.addAction(Constants.ACTION_SHADOW);
         filter.addAction(Constants.ACTION_CSV_SAVED);
+        filter.addAction(Constants.ACTION_CALIB_PROGRESS);
         registerReceiver(mainReceiver, filter);
         updateLastAlertText();
         refreshToggleButtonFromState();
