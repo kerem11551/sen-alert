@@ -16,6 +16,7 @@ public class Constants {
     // Activity -> Service (kontrol komutları)
     public static final String ACTION_MUTE        = "com.senalert.app.MUTE";
     public static final String ACTION_RECALIBRATE = "com.senalert.app.RECALIBRATE";
+    public static final String ACTION_RECALIBRATE_PHYSICAL = "com.senalert.app.RECALIBRATE_PHYSICAL";
     public static final String ACTION_SAVE_CSV    = "com.senalert.app.SAVE_CSV";
 
     // Service -> Activity (V1.1 gölge motor karşılaştırma verisi - sadece Test Modu açıkken)
