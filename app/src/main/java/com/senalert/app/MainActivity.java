@@ -216,6 +216,17 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Uzun basma: tam fiziksel kalibrasyonu (10sn sessizlik + 3 vuruş)
+        // tekrar tetikler - test/doğrulama amaçlı, uygulama silinip
+        // kurulmadan tekrar tekrar denemek için.
+        btnRecalibrate.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                sendControl(Constants.ACTION_RECALIBRATE_PHYSICAL);
+                Toast.makeText(MainActivity.this, "Fiziksel kalibrasyon yeniden başlıyor (10sn sessizlik + 3 vuruş)...", Toast.LENGTH_LONG).show();
+                return true;
+            }
+        });
+
         btnMute.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 sendControl(Constants.ACTION_MUTE);
