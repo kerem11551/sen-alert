@@ -82,7 +82,8 @@ public class SensorService extends Service implements SensorEventListener {
     private static final long QUICK_CALIBRATION_MS = 2000; // "Yeniden Kalibre Et" - hızlı taban sıfırlama
     private static final long NOISE_PHASE_MS = 10000;   // 10sn sessizlik (SADECE ilk kurulumda)
     private static final long TAP_TIMEOUT_MS = 20000;   // 3 vuruş için maks bekleme
-    private static final long TAP_REFRACTORY_MS = 300;  // aynı vuruşu iki kez saymamak için
+    private static final long TAP_REFRACTORY_MS = 600;  // aynı vuruşu iki kez saymamak için (300->600, sönümlenme payı)
+    private static final long PEAK_END_CONFIRM_MS = 100; // eşiğin altına düşüş en az bu kadar sürmeli, yoksa aynı vuruşun kısa bir dalgalanması sayılır
     private static final int  TAP_TARGET = 3;
     private static final float TAP_START_MULTIPLIER = 6f; // gürültünün kaç katı = vuruş başlangıcı
 
@@ -98,6 +99,7 @@ public class SensorService extends Service implements SensorEventListener {
     private final List<Float> noiseSamples = new ArrayList<>();
     private final List<Float> tapPeaks = new ArrayList<>();
     private boolean inTapPeak = false;
+    private long belowThresholdSinceMs = 0;
     private float currentTapPeakValue = 0f;
     private long tapRefractoryUntilMs = 0;
 
@@ -205,6 +207,14 @@ public class SensorService extends Service implements SensorEventListener {
                 smoothWindow.clear();
                 resetShadowTestData();
                 goCalibrating();
+            } else if (Constants.ACTION_RECALIBRATE_PHYSICAL.equals(action)) {
+                // Test/doğrulama amaçlı: fiziksel (10sn+3 vuruş) kalibrasyonu
+                // manuel olarak tekrar tetikler - uygulama silinip kurulmadan.
+                firstRead = true;
+                smoothWindow.clear();
+                resetShadowTestData();
+                prefs.edit().putBoolean("calib_completed", false).apply();
+                startPhysicalCalibration();
             } else if (Constants.ACTION_SAVE_CSV.equals(action)) {
                 saveTestCsv();
             }
@@ -243,6 +253,7 @@ public class SensorService extends Service implements SensorEventListener {
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constants.ACTION_MUTE);
         filter.addAction(Constants.ACTION_RECALIBRATE);
+        filter.addAction(Constants.ACTION_RECALIBRATE_PHYSICAL);
         filter.addAction(Constants.ACTION_SAVE_CSV);
         registerReceiver(controlReceiver, filter);
 
@@ -494,6 +505,7 @@ public class SensorService extends Service implements SensorEventListener {
         noiseSamples.clear();
         tapPeaks.clear();
         inTapPeak = false;
+        belowThresholdSinceMs = 0;
         currentTapPeakValue = 0f;
         tapRefractoryUntilMs = 0;
         calibQuality = "BEKLENIYOR";
@@ -530,6 +542,7 @@ public class SensorService extends Service implements SensorEventListener {
 
             if (now >= tapRefractoryUntilMs) {
                 if (rawMagXYZ >= tapStartThreshold) {
+                    belowThresholdSinceMs = 0; // hâlâ eşiğin üzerinde - vuruş devam ediyor
                     if (!inTapPeak) {
                         inTapPeak = true;
                         currentTapPeakValue = rawMagXYZ;
@@ -537,14 +550,20 @@ public class SensorService extends Service implements SensorEventListener {
                         currentTapPeakValue = Math.max(currentTapPeakValue, rawMagXYZ);
                     }
                 } else if (inTapPeak) {
-                    // vuruş bitti
-                    tapPeaks.add(currentTapPeakValue);
-                    inTapPeak = false;
-                    tapRefractoryUntilMs = now + TAP_REFRACTORY_MS;
-                    if (tapPeaks.size() >= TAP_TARGET) {
-                        finishTapsPhase();
-                        broadcastCalibProgress();
-                        return;
+                    // Eşiğin altına düştü, ama vuruşun sönümlenmesi olabilir -
+                    // gerçekten bittiğinden emin olmak için kısa bir süre bekle.
+                    if (belowThresholdSinceMs == 0) {
+                        belowThresholdSinceMs = now;
+                    } else if (now - belowThresholdSinceMs >= PEAK_END_CONFIRM_MS) {
+                        tapPeaks.add(currentTapPeakValue);
+                        inTapPeak = false;
+                        belowThresholdSinceMs = 0;
+                        tapRefractoryUntilMs = now + TAP_REFRACTORY_MS;
+                        if (tapPeaks.size() >= TAP_TARGET) {
+                            finishTapsPhase();
+                            broadcastCalibProgress();
+                            return;
+                        }
                     }
                 }
             }
