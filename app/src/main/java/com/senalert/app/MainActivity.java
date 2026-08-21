@@ -139,9 +139,15 @@ public class MainActivity extends Activity {
                 } else if ("TAPS".equals(phase)) {
                     alertBar.setText("KALİBRASYON: Ekrana hafifçe vurun (" + tapsDone + "/3)\nVuruşlar arasında ~1sn bekleyin.");
                 } else if ("DONE".equals(phase)) {
-                    alertBar.setText(String.format(Locale.US, "Kalibrasyon tamamlandı ✓ (katsayı: %.2f, kalite: %s)", factor, quality));
+                    // Toast kullanılıyor çünkü hemen ardından NORMAL durumuna
+                    // geçiş alertBar'ı anında gizliyor - mesaj görünmeden kayboluyordu.
+                    Toast.makeText(MainActivity.this,
+                        String.format(Locale.US, "Kalibrasyon tamamlandı ✓ (katsayı: %.2f, kalite: %s)", factor, quality),
+                        Toast.LENGTH_LONG).show();
                 } else if ("FAILED".equals(phase)) {
-                    alertBar.setText("Kalibrasyon vuruş algılayamadı - varsayılan kullanılıyor.\nAyarlar'dan tekrar deneyebilirsiniz.");
+                    Toast.makeText(MainActivity.this,
+                        "Kalibrasyon vuruş algılayamadı - varsayılan kullanılıyor. Ayarlar'dan tekrar deneyebilirsiniz.",
+                        Toast.LENGTH_LONG).show();
                 }
             }
         }
