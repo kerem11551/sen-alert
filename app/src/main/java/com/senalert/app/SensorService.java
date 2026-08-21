@@ -105,6 +105,8 @@ public class SensorService extends Service implements SensorEventListener {
     private float calibNoiseStd = 0f;
     private float calibDeviceFactor = 1.0f; // varsayılan: düzeltme yok
     private String calibQuality = "BEKLENIYOR";
+    private float calibMedianPeak = 0f;
+    private String calibRawPeaksStr = "-";
     private long lastCalibBroadcastMs = 0;
 
     private float lastX, lastY, lastZ;
@@ -217,6 +219,8 @@ public class SensorService extends Service implements SensorEventListener {
         calibNoiseMean = prefs.getFloat("calib_noise_mean", 0f);
         calibNoiseStd = prefs.getFloat("calib_noise_std", 0.02f);
         calibQuality = prefs.getString("calib_quality", "BEKLENIYOR");
+        calibMedianPeak = prefs.getFloat("calib_median_peak", 0f);
+        calibRawPeaksStr = prefs.getString("calib_raw_peaks", "-");
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -577,9 +581,10 @@ public class SensorService extends Service implements SensorEventListener {
     private void finishTapsPhase() {
         int n = tapPeaks.size();
         if (n == 0) {
-            // hiç vuruş algılanamadı - başarısız, güvenli varsayılana dön
             calibDeviceFactor = 1.0f;
             calibQuality = "BASARISIZ";
+            calibMedianPeak = 0f;
+            calibRawPeaksStr = "-";
             calibPhase = CalibPhase.FAILED;
             saveCalibProfile();
             return;
@@ -608,6 +613,13 @@ public class SensorService extends Service implements SensorEventListener {
         factor = Math.max(DEVICE_FACTOR_MIN, Math.min(DEVICE_FACTOR_MAX, factor));
 
         calibDeviceFactor = factor;
+        calibMedianPeak = medianPeak;
+        StringBuilder peaksSb = new StringBuilder();
+        for (int i = 0; i < tapPeaks.size(); i++) {
+            if (i > 0) peaksSb.append("|");
+            peaksSb.append(String.format(Locale.US, "%.4f", tapPeaks.get(i)));
+        }
+        calibRawPeaksStr = peaksSb.toString();
         calibQuality = (n >= TAP_TARGET && cv <= 0.5f) ? "IYI" : "DUSUK";
         calibPhase = CalibPhase.DONE;
         saveCalibProfile();
@@ -619,6 +631,8 @@ public class SensorService extends Service implements SensorEventListener {
             .putFloat("calib_noise_mean", calibNoiseMean)
             .putFloat("calib_noise_std", calibNoiseStd)
             .putFloat("calib_device_factor", calibDeviceFactor)
+            .putFloat("calib_median_peak", calibMedianPeak)
+            .putString("calib_raw_peaks", calibRawPeaksStr)
             .putString("calib_quality", calibQuality)
             .putInt("calib_tap_count", tapPeaks.size())
             .putLong("calib_timestamp", System.currentTimeMillis())
@@ -853,6 +867,8 @@ public class SensorService extends Service implements SensorEventListener {
             sb.append("# calib_gurultu_std,").append(String.format(Locale.US, "%.4f", calibNoiseStd)).append("\n");
             sb.append("# calib_device_factor,").append(String.format(Locale.US, "%.3f", calibDeviceFactor)).append("\n");
             sb.append("# calib_kalite,").append(calibQuality).append("\n");
+            sb.append("# calib_medyan_peak,").append(String.format(Locale.US, "%.4f", calibMedianPeak)).append("\n");
+            sb.append("# calib_ham_peakler,").append(calibRawPeaksStr).append(" (| ile ayrilmis, vurus sirasiyla)\n");
             sb.append("# calib_referans_peak_gecici,").append(REFERENCE_PEAK).append(" (TODO: Xiaomi gercek kalibrasyonundan sonra guncellenecek)\n");
             sb.append("# not,Sxy=referans(eski/salt-yatay, alarmi yonetmiyor) Sxyz=Z dahil ham skor(w=0.3, device_factor UYGULANMADAN) normalized_signal=Sxyz*device_factor - ARTIK GERCEK ALARMI BU YONETIYOR (V1.2) gercek_durum=UYGULAMANIN ASIL KARARI (normalized_signal'a gore) durum_xy/durum_xyz/new_state=HAM (sureli filtre olmadan) karsilastirma etiketleri\n");
             sb.append("\n");
